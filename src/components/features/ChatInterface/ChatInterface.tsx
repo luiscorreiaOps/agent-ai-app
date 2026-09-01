@@ -1246,6 +1246,18 @@ export const ChatInterface = ({ panelContext, onDismiss, sessionRef, responseLan
             external: chunk.toolCall.external,
           });
         }
+        if (chunk.toolResult) {
+          // Attached to the most recent call of the same name: the backend
+          // emits this right after execution, and concurrent calls in one
+          // round carry distinct names in practice.
+          const result = chunk.toolResult;
+          for (let i = finalToolExecutions.length - 1; i >= 0; i--) {
+            if (finalToolExecutions[i].name === result.name) {
+              finalToolExecutions[i].apiCalls = result.apiCalls;
+              break;
+            }
+          }
+        }
         if (chunk.content) {
           finalContent += chunk.content;
         }

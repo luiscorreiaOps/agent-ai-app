@@ -65,7 +65,7 @@ func TestExecuteToolCalls_ResultsAlignedWithToolCallID(t *testing.T) {
 		{ID: "call_3", Type: openai.ToolTypeFunction, Function: openai.FunctionCall{Name: "query_prometheus", Arguments: `{"query":"metric_three"}`}},
 	}
 
-	msgs, err := a.executeToolCalls(context.Background(), calls, llmProvider{}, nil, nil)
+	msgs, err := a.executeToolCalls(context.Background(), calls, llmProvider{}, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("executeToolCalls failed: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestExecuteToolCalls_ReadOnlyCallsRunConcurrently(t *testing.T) {
 	}
 
 	start := time.Now()
-	if _, err := a.executeToolCalls(context.Background(), calls, llmProvider{}, nil, nil); err != nil {
+	if _, err := a.executeToolCalls(context.Background(), calls, llmProvider{}, nil, nil, nil); err != nil {
 		t.Fatalf("executeToolCalls failed: %v", err)
 	}
 	elapsed := time.Since(start)
@@ -141,7 +141,7 @@ func TestExecuteToolCalls_NotifyErrorPropagates(t *testing.T) {
 	}
 	wantErr := errors.New("stream closed")
 
-	_, err := a.executeToolCalls(context.Background(), calls, llmProvider{}, func(name, args string) error { return wantErr }, nil)
+	_, err := a.executeToolCalls(context.Background(), calls, llmProvider{}, func(name, args string) error { return wantErr }, nil, nil)
 	if !errors.Is(err, wantErr) {
 		t.Errorf("err = %v, want %v", err, wantErr)
 	}
@@ -180,7 +180,7 @@ func TestExecuteToolCalls_MutatingCallsNeverOverlapEachOther(t *testing.T) {
 		{ID: "m2", Type: openai.ToolTypeFunction, Function: openai.FunctionCall{Name: "store_memory", Arguments: `{"project":"p","fact":"two"}`}},
 	}
 
-	msgs, err := a.executeToolCalls(context.Background(), calls, llmProvider{}, nil, nil)
+	msgs, err := a.executeToolCalls(context.Background(), calls, llmProvider{}, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("executeToolCalls failed: %v", err)
 	}
@@ -238,7 +238,7 @@ func TestExecuteToolCalls_MutatingAndReadOnlyOverlapWithEachOther(t *testing.T) 
 		{ID: "r1", Type: openai.ToolTypeFunction, Function: openai.FunctionCall{Name: "query_prometheus", Arguments: `{"query":"up"}`}},
 	}
 
-	if _, err := a.executeToolCalls(context.Background(), calls, llmProvider{}, nil, nil); err != nil {
+	if _, err := a.executeToolCalls(context.Background(), calls, llmProvider{}, nil, nil, nil); err != nil {
 		t.Fatalf("executeToolCalls failed: %v", err)
 	}
 }

@@ -105,10 +105,18 @@ export interface WorkerEventInfo {
   phase: WorkerEventPhase;
 }
 
+/** Sent once a tool call has finished, carrying what it actually did. Separate from ToolCallInfo, which is emitted before execution starts -- the API calls aren't known yet at that point. */
+export interface ToolResultInfo {
+  name: string;
+  /** Grafana API requests this tool issued, e.g. "GET /api/datasources". */
+  apiCalls?: string[];
+}
+
 export interface ChatResponse {
   content: string;
   done: boolean;
   toolCall?: ToolCallInfo;
+  toolResult?: ToolResultInfo;
   contextTokens?: number;
   maxTokens?: number;
   /** Short-lived activity label (e.g. "Compacting conversation context...") -- distinct from the generic thinking indicator. */

@@ -219,7 +219,7 @@ func (a *App) chatCompletion(ctx context.Context, req ChatRequest) (string, *Usa
 			historyMsg.ToolCalls = sanitizeToolCallArguments(choice.Message.ToolCalls)
 			messages = append(messages, historyMsg)
 
-			toolMessages, err := a.executeToolCalls(ctx, choice.Message.ToolCalls, provider, nil, nil)
+			toolMessages, err := a.executeToolCalls(ctx, choice.Message.ToolCalls, provider, nil, nil, nil)
 			if err != nil {
 				return "", nil, err
 			}
@@ -243,7 +243,7 @@ func (a *App) chatCompletion(ctx context.Context, req ChatRequest) (string, *Usa
 			assistantMsg.ToolCalls = pseudoCalls
 			messages = append(messages, assistantMsg)
 
-			toolMessages, err := a.executeToolCalls(ctx, pseudoCalls, provider, nil, nil)
+			toolMessages, err := a.executeToolCalls(ctx, pseudoCalls, provider, nil, nil, nil)
 			if err != nil {
 				return "", nil, err
 			}

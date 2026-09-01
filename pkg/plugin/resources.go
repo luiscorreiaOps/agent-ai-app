@@ -43,11 +43,12 @@ type ChatAttachment struct {
 
 // ChatResponse represents the chat completion response.
 type ChatResponse struct {
-	Content       string        `json:"content"`
-	Done          bool          `json:"done"`
-	ToolCall      *ToolCallInfo `json:"toolCall,omitempty"`
-	ContextTokens int           `json:"contextTokens,omitempty"`
-	MaxTokens     int           `json:"maxTokens,omitempty"`
+	Content       string          `json:"content"`
+	Done          bool            `json:"done"`
+	ToolCall      *ToolCallInfo   `json:"toolCall,omitempty"`
+	ToolResult    *ToolResultInfo `json:"toolResult,omitempty"`
+	ContextTokens int             `json:"contextTokens,omitempty"`
+	MaxTokens     int             `json:"maxTokens,omitempty"`
 	// Status is a short-lived activity label for the UI (e.g. "Compactando
 	// contexto...") -- distinct from the generic "thinking" dots, shown only
 	// while a specific background step is happening, cleared on the next
@@ -106,6 +107,16 @@ func newToolCallInfo(name string, args string) *ToolCallInfo {
 		info.External = true
 	}
 	return info
+}
+
+// ToolResultInfo is sent once a tool call has finished, carrying what the
+// tool actually did. Separate from ToolCallInfo because that one is emitted
+// before execution starts -- the API calls aren't known yet at that point.
+type ToolResultInfo struct {
+	Name string `json:"name"`
+	// APICalls lists the Grafana API requests this tool issued, e.g.
+	// "GET /api/datasources". Empty for tools that call no Grafana API.
+	APICalls []string `json:"apiCalls,omitempty"`
 }
 
 // Usage holds token usage information.

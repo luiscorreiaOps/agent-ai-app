@@ -30,6 +30,36 @@ const getErrorIndices = (toolExecutions: ToolExecution[]): Set<number> => {
 const isInternetSearch = (exec: ToolExecution): boolean =>
     exec.kind === 'internet_search' || exec.name === 'search_web';
 
+// Fields under which tools carry a query. Surfacing it avoids making anyone
+// read a JSON blob to find the one thing they came to check.
+const QUERY_FIELDS = ['expr', 'query', 'rawSql', 'logql', 'promql'];
+
+interface ParsedArguments {
+    query?: string;
+    rest?: string;
+    raw?: string;
+}
+
+// Arguments arrive as JSON produced by the model, so they can be malformed.
+// Fall back to the raw text rather than hiding the information.
+const parseArguments = (args?: string): ParsedArguments | null => {
+    if (!args || args.trim() === '' || args.trim() === '{}') {
+        return null;
+    }
+    try {
+        const parsed = JSON.parse(args) as Record<string, unknown>;
+        const queryField = QUERY_FIELDS.find((f) => typeof parsed[f] === 'string' && parsed[f]);
+        const query = queryField ? String(parsed[queryField]) : undefined;
+        const others = Object.fromEntries(Object.entries(parsed).filter(([k]) => k !== queryField));
+        return {
+            query,
+            rest: Object.keys(others).length > 0 ? JSON.stringify(others, null, 2) : undefined,
+        };
+    } catch {
+        return { raw: args };
+    }
+};
+
 export const ToolCallContainer: React.FC<ToolCallContainerProps> = ({ toolExecutions, theme, isStreaming = false }) => {
     // Track which items user has manually collapsed
     const manuallyCollapsed = useRef<Set<number>>(new Set());
@@ -130,19 +160,34 @@ export const ToolCallContainer: React.FC<ToolCallContainerProps> = ({ toolExecut
                         const internetSearch = isInternetSearch(exec);
                         const iconName = internetSearch ? 'search' : 'plug';
                         const displayName = exec.label || (internetSearch ? 'Internet search' : exec.name);
-                        const displayStatus =
+                        const statusLabel =
                             exec.status === 'pending'
                                 ? exec.statusLabel || displayName
                                 : exec.status === 'success'
                                     ? exec.doneLabel || displayName
                                     : displayName;
+                        // statusLabel is "Using Grafana tools..." / "Used
+                        // Grafana tool" for EVERY Grafana tool, so a list of
+                        // five calls rendered five identical rows. Appending
+                        // the function name is what tells them apart. Internet
+                        // search keeps its label alone: "Internet search"
+                        // already says it, and its technical name adds nothing.
+                        const displayStatus = internetSearch ? statusLabel : `${statusLabel} (${exec.name})`;
+
+                        const args = parseArguments(exec.arguments);
+                        const apiCalls = exec.apiCalls ?? [];
+                        // Expandable as soon as there is something to show: an
+                        // error, the executed query, or the API calls the tool
+                        // actually issued -- that last one being the only
+                        // detail available for argument-less tools.
+                        const canExpand = hasError || args !== null || apiCalls.length > 0;
 
                         return (
                             <div key={index} className={styles.toolCallContainer}>
                                 <div
                                     className={styles.toolCallHeader}
-                                    onClick={() => hasError && toggleExpand(index)}
-                                    style={{ cursor: hasError ? 'pointer' : 'default' }}
+                                    onClick={() => canExpand && toggleExpand(index)}
+                                    style={{ cursor: canExpand ? 'pointer' : 'default' }}
                                 >
                                     <div className={styles.toolCallStatus}>
                                         {exec.status === 'pending' && (
@@ -160,10 +205,20 @@ export const ToolCallContainer: React.FC<ToolCallContainerProps> = ({ toolExecut
                                     {exec.external && (
                                         <span className={styles.externalBadge}>Public internet</span>
                                     )}
-                                    {hasError && (
+                                    {canExpand && (
                                         <Icon name={isExpanded ? 'angle-down' : 'angle-right'} size="sm" />
                                     )}
                                 </div>
+                                {isExpanded && (args || apiCalls.length > 0) && (
+                                    <div className={styles.toolCallArguments}>
+                                        {args?.query && <code className={styles.toolCallQuery}>{args.query}</code>}
+                                        {args?.rest && <span>{args.rest}</span>}
+                                        {args?.raw && <span>{args.raw}</span>}
+                                        {apiCalls.map((call, i) => (
+                                            <code key={i} className={styles.toolCallApi}>{call}</code>
+                                        ))}
+                                    </div>
+                                )}
                                 {hasError && isExpanded && exec.error && (
                                     <div className={styles.toolCallErrorDetails}>
                                         {exec.error}
@@ -294,5 +349,32 @@ const getStyles = (theme: GrafanaTheme2) => ({
     font-family: ${theme.typography.fontFamilyMonospace};
     white-space: pre-wrap;
     word-break: break-word;
+  `,
+    toolCallArguments: css`
+    padding: 8px 12px;
+    border-top: 1px solid ${theme.colors.border.weak};
+    background: ${theme.colors.background.secondary};
+    color: ${theme.colors.text.secondary};
+    font-size: 12px;
+    font-family: ${theme.typography.fontFamilyMonospace};
+    white-space: pre-wrap;
+    word-break: break-word;
+  `,
+    // The query is what the reader came to check: set apart from the rest of
+    // the arguments, which are just call context.
+    // What the tool actually asked Grafana for: the only information
+    // available for list_datasources, list_folders and the like.
+    toolCallApi: css`
+    display: block;
+    margin-top: 4px;
+    color: ${theme.colors.text.secondary};
+  `,
+    toolCallQuery: css`
+    display: block;
+    margin-bottom: 6px;
+    padding: 6px 8px;
+    border-left: 2px solid ${theme.colors.primary.border};
+    background: ${theme.colors.background.primary};
+    color: ${theme.colors.text.primary};
   `,
 });
