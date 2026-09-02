@@ -156,6 +156,14 @@ interface JsonData {
   timeoutSeconds?: number;
   maxTokens?: number;
   rateLimitMaxRetries?: number;
+  /** Per-user chat requests allowed per minute (token bucket, burst = this value). See pkg/plugin/app.go's getLimiter. */
+  chatRateLimitPerMinute?: number;
+  /** How many chat requests may run at once across every user. */
+  maxConcurrentChats?: number;
+  /** How long a request waits for a free slot before being refused. 0 restores fail-fast. */
+  chatQueueWaitSeconds?: number;
+  /** How many requests may be waiting for a slot at once. */
+  chatQueueDepth?: number;
   attachmentMaxBytes?: number;
   enableStandaloneChat?: boolean;
   enableDashboardIntegration?: boolean;
@@ -201,6 +209,13 @@ const MAX_FALLBACK_PROVIDERS = 2;
 const MAX_TIMEOUT_SECONDS = 300;
 const MAX_MAX_TOKENS = 32768;
 const MAX_RATE_LIMIT_RETRIES = 20;
+// Mirrors the ceilings the backend already clamps to (see pkg/plugin/
+// settings.go) -- the UI shouldn't let an admin type a value that is then
+// silently lowered on save.
+const MAX_CHAT_RATE_LIMIT_PER_MINUTE = 120;
+const MAX_CONCURRENT_CHATS = 500;
+const MAX_CHAT_QUEUE_WAIT_SECONDS = 300;
+const MAX_CHAT_QUEUE_DEPTH = 2000;
 const MAX_ATTACHMENT_MAX_KB = 2048; // 2 MB
 
 interface FallbackProviderState {
@@ -231,6 +246,10 @@ export function AppConfig({ plugin }: Props) {
     timeoutSeconds: jsonData.timeoutSeconds || 60,
     maxTokens: jsonData.maxTokens || 4096,
     rateLimitMaxRetries: jsonData.rateLimitMaxRetries ?? 3,
+    chatRateLimitPerMinute: jsonData.chatRateLimitPerMinute ?? 10,
+    maxConcurrentChats: jsonData.maxConcurrentChats ?? 25,
+    chatQueueWaitSeconds: jsonData.chatQueueWaitSeconds ?? 30,
+    chatQueueDepth: jsonData.chatQueueDepth ?? 50,
     // Stored/sent as bytes; edited here in KB, which is the natural unit for
     // sizing a text/config/log snippet or a small screenshot.
     attachmentMaxKB: Math.round((jsonData.attachmentMaxBytes || 51200) / 1024),
@@ -413,6 +432,10 @@ export function AppConfig({ plugin }: Props) {
           timeoutSeconds: state.timeoutSeconds,
           maxTokens: state.maxTokens,
           rateLimitMaxRetries: state.rateLimitMaxRetries,
+          chatRateLimitPerMinute: state.chatRateLimitPerMinute,
+          maxConcurrentChats: state.maxConcurrentChats,
+          chatQueueWaitSeconds: state.chatQueueWaitSeconds,
+          chatQueueDepth: state.chatQueueDepth,
           attachmentMaxBytes: state.attachmentMaxKB * 1024,
           enableStandaloneChat: state.enableStandaloneChat,
           enableDashboardIntegration: state.enableDashboardIntegration,
@@ -977,6 +1000,66 @@ export function AppConfig({ plugin }: Props) {
 
         {showSecurityLimits && (
           <>
+            <Field
+              label="Chat requests per minute (per user)"
+              description={`Rate limit applied to each Grafana user separately, keyed on their authenticated identity -- the same one the audit log records. A token bucket, so someone can send this many in a row and then one every 60/N seconds: a normal conversation never notices it, a script does. Range: 1-${MAX_CHAT_RATE_LIMIT_PER_MINUTE}.`}
+            >
+              <Input
+                aria-label="Chat requests per minute"
+                type="number"
+                min={1}
+                max={MAX_CHAT_RATE_LIMIT_PER_MINUTE}
+                value={state.chatRateLimitPerMinute}
+                onChange={onChangeNumber('chatRateLimitPerMinute', MAX_CHAT_RATE_LIMIT_PER_MINUTE)}
+                width={20}
+              />
+            </Field>
+
+            <Field
+              label="Max concurrent chats"
+              description={`How many chat requests may run at once across every user -- bounds the load on the LLM backend regardless of how many people are within their own per-user limit. Range: 1-${MAX_CONCURRENT_CHATS}.`}
+            >
+              <Input
+                aria-label="Max concurrent chats"
+                type="number"
+                min={1}
+                max={MAX_CONCURRENT_CHATS}
+                value={state.maxConcurrentChats}
+                onChange={onChangeNumber('maxConcurrentChats', MAX_CONCURRENT_CHATS)}
+                width={20}
+              />
+            </Field>
+
+            <Field
+              label="Queue wait (seconds)"
+              description={`When no slot is free, how long a request waits for one before being refused. A short wait turns "the backend is momentarily busy" into a real answer instead of an error the caller must retry. Set 0 to refuse immediately. Range: 0-${MAX_CHAT_QUEUE_WAIT_SECONDS}.`}
+            >
+              <Input
+                aria-label="Queue wait seconds"
+                type="number"
+                min={0}
+                max={MAX_CHAT_QUEUE_WAIT_SECONDS}
+                value={state.chatQueueWaitSeconds}
+                onChange={onChangeNumber('chatQueueWaitSeconds', MAX_CHAT_QUEUE_WAIT_SECONDS)}
+                width={20}
+              />
+            </Field>
+
+            <Field
+              label="Queue depth"
+              description={`How many requests may be waiting for a slot at once, independently of the wait above -- past this, an overwhelmed instance fails immediately rather than growing an unbounded backlog. Range: 0-${MAX_CHAT_QUEUE_DEPTH}.`}
+            >
+              <Input
+                aria-label="Queue depth"
+                type="number"
+                min={0}
+                max={MAX_CHAT_QUEUE_DEPTH}
+                value={state.chatQueueDepth}
+                onChange={onChangeNumber('chatQueueDepth', MAX_CHAT_QUEUE_DEPTH)}
+                width={20}
+              />
+            </Field>
+
             <Field
               label="Additional guardrails"
               description={`Extra rules appended on top of the assistant's built-in guardrails (never a replacement -- the built-in rules always apply). Use this for org-specific restrictions, e.g. "Never suggest deleting a dashboard" or "Never discuss customer names". ${state.customGuardrails.length}/${MAX_CUSTOM_GUARDRAILS_CHARS} characters.`}
