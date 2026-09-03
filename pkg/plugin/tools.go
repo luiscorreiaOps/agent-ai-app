@@ -32,6 +32,9 @@ func (a *App) allTools(ctx context.Context, agent string) []openai.Tool {
 		a.toolExecutor.onlineSearch.AdvertisedAvailable() {
 		tools = append(tools, onlineSearchTool())
 	}
+	if agent == "generic" && a.settings.LightModeForDefaultAgent {
+		tools = filterEnabledTools(tools, []string{"list_dashboards", "get_dashboard", "list_folders", "list_alerts", "dispatch_worker"})
+	}
 	return filterEnabledTools(tools, a.settings.EnabledTools)
 }
 

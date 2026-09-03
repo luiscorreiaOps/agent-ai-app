@@ -747,6 +747,7 @@ export const ChatInterface = ({ panelContext, onDismiss, sessionRef, responseLan
   // Off until the real admin-configured value loads -- never show the
   // monitoring notice speculatively before we actually know it's on.
   const [auditLogFullContent, setAuditLogFullContent] = useState(false);
+  const [lightModeForDefaultAgent, setLightModeForDefaultAgent] = useState(false);
   useEffect(() => {
     fetchLimits()
       .then((limits) => {
@@ -758,6 +759,7 @@ export const ChatInterface = ({ panelContext, onDismiss, sessionRef, responseLan
           setMaxAttachmentsTotalBytes(limits.maxAttachmentsTotalBytes);
         }
         setAuditLogFullContent(limits.auditLogFullContent);
+        setLightModeForDefaultAgent(limits.lightModeForDefaultAgent ?? false);
       })
       .catch(() => {});
   }, []);
@@ -1618,7 +1620,7 @@ export const ChatInterface = ({ panelContext, onDismiss, sessionRef, responseLan
 
             <div className={styles.logo}>
               <img
-                src={`public/plugins/${PLUGIN_ID}/img/logo-pixo.png`}
+                src={`public/plugins/${PLUGIN_ID}/img/logo-pixo-large.png`}
                 alt="Agent AI"
                 className={styles.logoImage}
                 draggable={false}
@@ -1627,7 +1629,7 @@ export const ChatInterface = ({ panelContext, onDismiss, sessionRef, responseLan
               {logoShinePlayed && (
                 <span
                   className={styles.logoShine}
-                  style={{ WebkitMaskImage: `url(public/plugins/${PLUGIN_ID}/img/logo-pixo.png)`, maskImage: `url(public/plugins/${PLUGIN_ID}/img/logo-pixo.png)` }}
+                  style={{ WebkitMaskImage: `url(public/plugins/${PLUGIN_ID}/img/logo-pixo-large.png)`, maskImage: `url(public/plugins/${PLUGIN_ID}/img/logo-pixo-large.png)` }}
                 />
               )}
             </div>
@@ -1636,6 +1638,9 @@ export const ChatInterface = ({ panelContext, onDismiss, sessionRef, responseLan
             <h2 className={styles.subtitle}>{getLandingText(responseLanguage).subtitle}</h2>
 
             <div className={styles.landingInputWrapper}>
+              {lightModeForDefaultAgent && selectedAgent === 'generic' && (
+                <div style={{ position: 'absolute', top: '6px', right: '12px', fontSize: '10px', opacity: 0.15, textTransform: 'uppercase', pointerEvents: 'none', userSelect: 'none' }}>Light Mode</div>
+              )}
 
               {/* Not configured -- shown to end users, so no technical language
                   or link to admin config; reads as a temporary outage, not
@@ -2209,6 +2214,9 @@ export const ChatInterface = ({ panelContext, onDismiss, sessionRef, responseLan
               Agent AI can make mistakes. Check important info before acting on it.
             </div>
             <div className={`${styles.inputWrapper} ${isLoading ? styles.inputWrapperLoading : ''} `}>
+              {lightModeForDefaultAgent && selectedAgent === 'generic' && (
+                <div style={{ position: 'absolute', top: '6px', right: '12px', fontSize: '10px', opacity: 0.15, textTransform: 'uppercase', pointerEvents: 'none', userSelect: 'none' }}>Light Mode</div>
+              )}
               {editingMessageIndex !== null && (
                 <div className={styles.editingMessageBanner} data-testid="editing-message-banner">
                   <div className={styles.editingMessageInfo}>

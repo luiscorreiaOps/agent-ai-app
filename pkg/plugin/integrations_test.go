@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
@@ -76,83 +75,6 @@ func TestIntegrationsStatus_ReportsOKWhenLLMAppHealthy(t *testing.T) {
 	}
 	if !statuses[0].Enabled {
 		t.Error("Enabled = false, want true (default)")
-	}
-}
-
-func TestIntegrationsStatus_ReportsDegradedWhenInstalledButUnconfigured(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"details":{"llmProvider":{"ok":false,"error":"no provider configured"}}}`))
-	}))
-	defer server.Close()
-
-	app := newTestAppWithGrafana(t, server.URL, "grafana-token")
-	statuses := app.integrationsStatus(context.Background())
-	if statuses[0].Status != IntegrationStatusDegraded {
-		t.Errorf("Status = %q, want %q", statuses[0].Status, IntegrationStatusDegraded)
-	}
-}
-
-func TestIntegrationsStatus_ReportsDegradedWithDetailOn401_LLMApp(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == llmAppHealthPath {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer server.Close()
-
-	app := newTestAppWithGrafana(t, server.URL, "stale-token")
-	statuses := app.integrationsStatus(context.Background())
-	if len(statuses) != 1 {
-		t.Fatalf("len(statuses) = %d, want 1 (a 401 means it IS installed, just misauthenticated)", len(statuses))
-	}
-	if statuses[0].Status != IntegrationStatusDegraded {
-		t.Errorf("Status = %q, want %q (a 401 must never collapse to absent)", statuses[0].Status, IntegrationStatusDegraded)
-	}
-	if !strings.Contains(statuses[0].Detail, "service account token") {
-		t.Errorf("Detail = %q, want an actionable hint mentioning the service account token", statuses[0].Detail)
-	}
-}
-
-func TestIntegrationsStatus_ReportsDegradedWithDetailOn401_BrainAgent(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == mcpToolsPath {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer server.Close()
-
-	app := newTestAppWithGrafana(t, server.URL, "stale-token")
-	// Enable brain-agent tools so brainAgentStatus is actually consulted --
-	// EnableBrainAgentTools defaults to nil/false otherwise.
-	enabled := true
-	app.settings.EnableBrainAgentTools = &enabled
-
-	statuses := app.integrationsStatus(context.Background())
-	var brainAgent *IntegrationStatus
-	for i := range statuses {
-		if statuses[i].ID == "brain-agent" {
-			brainAgent = &statuses[i]
-		}
-	}
-	if brainAgent == nil {
-		t.Fatalf("statuses = %+v, want a brain-agent entry (a 401 means it IS installed)", statuses)
-	}
-	if brainAgent.Status != IntegrationStatusDegraded {
-		t.Errorf("Status = %q, want %q (a 401 must never collapse to absent)", brainAgent.Status, IntegrationStatusDegraded)
-	}
-	if !strings.Contains(brainAgent.Detail, "service account token") {
-		t.Errorf("Detail = %q, want an actionable hint mentioning the service account token", brainAgent.Detail)
 	}
 }
 

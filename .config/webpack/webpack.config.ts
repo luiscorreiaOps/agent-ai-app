@@ -161,6 +161,9 @@ const config = async (env: Env): Promise<Configuration> => {
       uniqueName: pluginJson.id,
       crossOriginLoading: 'anonymous',
     },
+    performance: {
+      hints: false,
+    },
 
     plugins: [
       new BuildModeWebpackPlugin(),

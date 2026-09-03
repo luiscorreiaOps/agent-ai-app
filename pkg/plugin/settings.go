@@ -48,13 +48,14 @@ const (
 
 // Settings holds the plugin configuration parsed from Grafana's jsonData and secureJsonData.
 type Settings struct {
-	EndpointURL      string            `json:"endpointURL"`
-	Model            string            `json:"model"`
-	TimeoutSeconds   int               `json:"timeoutSeconds"`
-	MaxTokens        int               `json:"maxTokens"`
-	MaxContextTokens int               `json:"maxContextTokens"`
-	CustomHeaders    map[string]string `json:"customHeaders,omitempty"`
-	GrafanaURL       string            `json:"grafanaURL,omitempty"`
+	EndpointURL              string            `json:"endpointURL"`
+	Model                    string            `json:"model"`
+	LightModeForDefaultAgent bool              `json:"lightModeForDefaultAgent,omitempty"`
+	TimeoutSeconds           int               `json:"timeoutSeconds"`
+	MaxTokens                int               `json:"maxTokens"`
+	MaxContextTokens         int               `json:"maxContextTokens"`
+	CustomHeaders            map[string]string `json:"customHeaders,omitempty"`
+	GrafanaURL               string            `json:"grafanaURL,omitempty"`
 	// AgentContexts holds user-edited specialization text per custom agent
 	// slot (agent-1, agent-2, agent-3), set from the app's own Agents tab.
 	AgentContexts                      map[string]string  `json:"agentContexts,omitempty"`

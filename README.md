@@ -1,6 +1,6 @@
 <table>
 <tr>
-<td width="110" valign="middle" align="center"><img src="src/img/logo-pixo-large.png" width="90" alt="Agent AI" /></td>
+<td width="110" valign="middle" align="center"><img src="/public/plugins/shortbobcat2735-agentai-app/img/logo-pixo-large.png" width="90" alt="Agent AI" /></td>
 <td valign="middle">
 
 # Agent AI
@@ -27,16 +27,16 @@ datasources, or other Grafana resources.
 ## Screenshots
 
 <p>
-  <img src="src/img/screenshots/chat-landing.png" width="760" alt="Chat" />
+  <img src="/public/plugins/shortbobcat2735-agentai-app/img/screenshots/chat-landing.png" width="760" alt="Chat" />
 </p>
 <p>
-  <img src="src/img/screenshots/agents-page.png" width="760" alt="Custom specialist agents" />
+  <img src="/public/plugins/shortbobcat2735-agentai-app/img/screenshots/agents-page.png" width="760" alt="Custom specialist agents" />
 </p>
 <p>
-  <img src="src/img/screenshots/panel-menu.png" width="760" alt="Panel menu integration" />
+  <img src="/public/plugins/shortbobcat2735-agentai-app/img/screenshots/panel-menu.png" width="760" alt="Panel menu integration" />
 </p>
 <p>
-  <img src="src/img/screenshots/configuration-page.png" width="760" alt="Configuration" />
+  <img src="/public/plugins/shortbobcat2735-agentai-app/img/screenshots/configuration-page.png" width="760" alt="Configuration" />
 </p>
 
 ## Main capabilities
@@ -44,6 +44,7 @@ datasources, or other Grafana resources.
 | Capability | What it does |
 |---|---|
 | Context-aware chat | Ask about dashboards, panels, metrics, logs, traces, alerts, services, or architecture using live Grafana data. |
+| Light Mode | Optimize token usage on free-tier LLM providers by running the Default agent with a reduced context footprint. |
 | Panel and dashboard analysis | Open Agent AI from a panel menu or dashboard context and ask about the exact queries, variables, datasource, and time range being viewed. |
 | Specialist agents / subagents | Create focused agents for areas such as SRE, Kubernetes, security, platform engineering, or internal docs. Each one adds its own context while keeping the same live Grafana tools. |
 | Alert and incident investigation | Start from a firing alert or incident seed and gather related alert rules, logs, traces, dashboards, and historical context in one flow. |
@@ -146,6 +147,7 @@ Optional:
 - **Specialist agent access**: optionally restrict Viewers to the Default
   agent.
 - **Internet tools**: enable or disable public internet-backed search.
+- **Light Mode**: reduce the context size to ~5k tokens for the Default agent, perfect for free tier limits.
 - **Brain Agent tools**: enable optional long-term memory when Brain Agent is
   installed.
 - **Provider fallback**: configure backup OpenAI-compatible providers.

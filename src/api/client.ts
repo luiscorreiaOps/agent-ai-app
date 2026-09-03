@@ -46,6 +46,7 @@ export interface Limits {
   enableDashboardIntegration: boolean;
   /** Whether an admin has enabled full-content audit logging (see Configuration's "Audit logging" section). When true, the UI shows a discreet notice that message content may be logged. */
   auditLogFullContent: boolean;
+  lightModeForDefaultAgent: boolean;
   /** Admin-configured default reply language (Configuration page's "Default reply language"); empty/unset means English. */
   responseLanguage?: string;
   /** When true, the standalone chat page shows a maintenance notice instead of the real chat -- see Configuration's "Assistant Features" section. Does not affect the dashboard-panel-menu chat. */

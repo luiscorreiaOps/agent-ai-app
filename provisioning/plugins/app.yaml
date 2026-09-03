@@ -1,16 +1,9 @@
 apiVersion: 1
-
 apps:
   - type: shortbobcat2735-agentai-app
     org_id: 1
     disabled: false
     jsonData:
-      endpointURL: "http://172.17.0.1:8000/v1"
-      model: "mock-model"
-      enableBrainAgentTools: true
-    secureJsonData:
-      apiKey: "dummy-key"
-      grafanaToken: "REPLACE_ME_WITH_YOUR_GRAFANA_SERVICE_ACCOUNT_TOKEN"
-  - type: brain-agent
-    org_id: 1
-    disabled: false
+      enabledTools: []
+      model: "openai/gpt-oss-120b"
+      lightModeForDefaultAgent: true

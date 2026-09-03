@@ -11,10 +11,9 @@ import (
 
 // llmProvider is one fully-configured, ready-to-use LLM endpoint -- its own
 // client (bounded timeout, for tool-call check rounds) and stream client
-// (long timeout, for the final streamed answer). endpointURL is kept
-// alongside so per-provider quirks (e.g. isGeminiEndpoint) can be checked
-// against whichever provider actually ends up serving a request, not just
-// the primary.
+// (long timeout, for the final streamed answer). endpointURL is kept alongside
+// so diagnostics can identify whichever provider actually ends up serving a
+// request, not just the primary.
 type llmProvider struct {
 	endpointURL  string
 	model        string
@@ -33,13 +32,13 @@ func newLLMProvider(endpointURL, apiKey, model string, timeoutSeconds int) llmPr
 	requestConfig := config
 	requestConfig.HTTPClient = &http.Client{
 		Timeout:   time.Duration(timeoutSeconds) * time.Second,
-		Transport: &retryAfterTransport{base: &reasoningKeyRewriteTransport{base: http.DefaultTransport}},
+		Transport: &retryAfterTransport{base: &geminiThoughtRewriteTransport{base: &reasoningKeyRewriteTransport{base: http.DefaultTransport}}},
 	}
 
 	streamConfig := config
 	streamConfig.HTTPClient = &http.Client{
 		Timeout:   streamHTTPTimeout,
-		Transport: &retryAfterTransport{base: &reasoningKeyRewriteTransport{base: http.DefaultTransport}},
+		Transport: &retryAfterTransport{base: &geminiThoughtRewriteTransport{base: &reasoningKeyRewriteTransport{base: http.DefaultTransport}}},
 	}
 
 	return llmProvider{

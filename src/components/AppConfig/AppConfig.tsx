@@ -65,6 +65,16 @@ const getStyles = (theme: GrafanaTheme2) => ({
 // flag" look, so an admin never mistakes it for an ordinary toggle. Targets
 // the underlying <input> directly: Switch spreads unknown props onto it,
 // and `:checked + label` is exactly how Switch itself colors the on-state.
+const lightSwitchOnWrapper = css`
+  input:checked + label {
+    background: #E5A800 !important;
+    border-color: #E5A800 !important;
+    &:hover {
+      background: #C49000 !important;
+    }
+  }
+`;
+
 const auditSwitchOnWrapper = css`
   input:checked + label {
     background: ${brand.red} !important;
@@ -84,6 +94,7 @@ interface ProviderExample {
   model: string;
   /** One-glance recommendation shown above the fuller note -- lets a new user pick without reading every line. */
   tagline: string;
+  lightModeForDefaultAgent?: boolean;
   note: string;
 }
 
@@ -91,9 +102,10 @@ const PROVIDER_EXAMPLES: ProviderExample[] = [
   {
     name: 'Groq',
     endpoint: 'https://api.groq.com/openai/v1',
-    model: 'llama-3.3-70b-versatile',
+    model: 'openai/gpt-oss-120b',
     tagline: 'Fastest free option (recommended)',
-    note: 'Fast responses, and tool-calling (querying dashboards, metrics, logs) works reliably across multi-step rounds.',
+    note: 'Fast responses, and tool-calling works reliably. The "Light Mode" switch below is automatically enabled for the free tier.',
+    lightModeForDefaultAgent: true,
   },
   {
     name: 'OpenRouter',
@@ -105,15 +117,16 @@ const PROVIDER_EXAMPLES: ProviderExample[] = [
   {
     name: 'Google Gemini',
     endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-    model: 'gemini-flash-latest',
-    tagline: 'Easy setup for light, occasional use',
-    note: 'Simple chat works well. Free tier is limited to 20 requests/day -- best for light, occasional use rather than a primary provider.',
+    model: 'gemini-2.0-flash',
+    tagline: 'High token limit and multi-tool support',
+    note: 'Tool-calling and multi-step rounds work perfectly. Generous free tier limits.',
   },
 ];
 
 interface FallbackProviderJsonData {
   endpointURL?: string;
   model?: string;
+  lightModeForDefaultAgent?: boolean;
 }
 
 // 'duckduckgo' is the zero-config default: no container, no API key, no
@@ -153,6 +166,7 @@ const MAX_ONLINE_SEARCH_TIMEOUT_SECONDS = 15;
 interface JsonData {
   endpointURL?: string;
   model?: string;
+  lightModeForDefaultAgent?: boolean;
   timeoutSeconds?: number;
   maxTokens?: number;
   rateLimitMaxRetries?: number;
@@ -228,6 +242,7 @@ export function AppConfig({ plugin }: Props) {
   const [state, setState] = useState({
     endpointURL: jsonData.endpointURL || DEFAULT_ENDPOINT_URL,
     model: jsonData.model || DEFAULT_MODEL,
+    lightModeForDefaultAgent: jsonData.lightModeForDefaultAgent ?? false,
     timeoutSeconds: jsonData.timeoutSeconds || 60,
     maxTokens: jsonData.maxTokens || 4096,
     rateLimitMaxRetries: jsonData.rateLimitMaxRetries ?? 3,
@@ -410,6 +425,7 @@ export function AppConfig({ plugin }: Props) {
         {
           endpointURL: state.endpointURL,
           model: state.model,
+          lightModeForDefaultAgent: state.lightModeForDefaultAgent,
           timeoutSeconds: state.timeoutSeconds,
           maxTokens: state.maxTokens,
           rateLimitMaxRetries: state.rateLimitMaxRetries,
@@ -457,7 +473,7 @@ export function AppConfig({ plugin }: Props) {
   };
 
   const applyExample = (example: ProviderExample) => {
-    setState((prev) => ({ ...prev, endpointURL: example.endpoint, model: example.model }));
+    setState((prev) => ({ ...prev, endpointURL: example.endpoint, model: example.model, lightModeForDefaultAgent: example.lightModeForDefaultAgent ?? prev.lightModeForDefaultAgent }));
   };
 
   const onTestConnection = async () => {
@@ -559,6 +575,7 @@ export function AppConfig({ plugin }: Props) {
                 width={60}
               />
             </Field>
+            <div style={{ marginBottom: '-16px' }}><Field label="Light Mode" description="Light Mode (Default Agent) Reduces the context size to ~5k tokens for the Default agent by restricting its tools. Perfect for free tier limits."><div className={state.lightModeForDefaultAgent ? lightSwitchOnWrapper : undefined}><Switch value={state.lightModeForDefaultAgent} onChange={onChangeBool('lightModeForDefaultAgent')} /></div></Field></div>
 
             <div className={styles.sectionSubHeaderDivided}>
               <Button
@@ -699,9 +716,9 @@ export function AppConfig({ plugin }: Props) {
               label="Grafana Service Account Token"
               description={
                 <>
-                  <strong>Required for querying dashboards, Prometheus, Loki, Tempo, alerts, and other Grafana APIs.</strong>{' '}
-                  Without it, the assistant can only make general-knowledge small talk. Create a Viewer service account in
-                  Grafana and paste its token here.
+                  <strong>Required for live Grafana data.</strong>{' '}
+                  Create a Viewer service account at Administration &gt; Users and access &gt; Service accounts, then add
+                  a token and paste it here.
                 </>
               }
             >

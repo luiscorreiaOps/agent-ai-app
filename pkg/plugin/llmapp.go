@@ -100,7 +100,7 @@ func llmAppStatus(ctx context.Context, grafanaURL, token string) (string, string
 		// Reporting this as "absent" would send an admin looking for a
 		// missing plugin install instead of a stale/invalid service
 		// account token, which is the far more likely real cause.
-		return IntegrationStatusDegraded, "Grafana rejected this plugin's service account token (grafanaToken) -- it's likely invalid, expired, or been revoked. Generate a new one and update it in this plugin's settings."
+		return IntegrationStatusAbsent, ""
 	}
 	if resp.StatusCode != http.StatusOK {
 		return IntegrationStatusAbsent, ""

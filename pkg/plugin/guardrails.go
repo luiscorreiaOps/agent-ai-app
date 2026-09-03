@@ -2,21 +2,7 @@ package plugin
 
 import (
 	"fmt"
-	"strings"
 )
-
-// isGeminiEndpoint reports whether the configured LLM endpoint is Google's
-// Gemini OpenAI-compat API. Gemini's function-calling requires round-tripping
-// a `thought_signature` field (in `extra_content.google`) on every assistant
-// tool-call message, which go-openai's ChatCompletionMessage doesn't parse or
-// preserve -- any second tool-call round (or a multi-tool-call round) fails
-// with HTTP 400 "missing thought_signature". Until that's fixed at the client
-// level, tool-calling is disabled entirely for this endpoint so every mode
-// (including the panel-preview) reliably returns an answer instead of
-// erroring out mid-conversation.
-func isGeminiEndpoint(endpointURL string) bool {
-	return strings.Contains(strings.ToLower(endpointURL), "generativelanguage.googleapis.com")
-}
 
 // responseLanguageName maps a Settings.ResponseLanguage value to the
 // language name used in the prompt text -- unknown/empty values default to
