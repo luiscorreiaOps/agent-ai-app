@@ -307,6 +307,7 @@ func (a *App) handleLimits(w http.ResponseWriter, _ *http.Request) {
 		"enableStandaloneChat":       standaloneChat,
 		"enableDashboardIntegration": dashboardIntegration,
 		"auditLogFullContent":        a.settings.AuditLogFullContent,
+		"lightModeForDefaultAgent":   a.settings.LightModeForDefaultAgent,
 		"responseLanguage":           a.settings.ResponseLanguage,
 		"maintenanceMode":            a.settings.MaintenanceMode,
 	})

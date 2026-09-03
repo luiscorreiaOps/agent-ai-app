@@ -33,13 +33,13 @@ func newLLMProvider(endpointURL, apiKey, model string, timeoutSeconds int) llmPr
 	requestConfig := config
 	requestConfig.HTTPClient = &http.Client{
 		Timeout:   time.Duration(timeoutSeconds) * time.Second,
-		Transport: &retryAfterTransport{base: &reasoningKeyRewriteTransport{base: http.DefaultTransport}},
+		Transport: &retryAfterTransport{base: &geminiThoughtRewriteTransport{base: &reasoningKeyRewriteTransport{base: http.DefaultTransport}}},
 	}
 
 	streamConfig := config
 	streamConfig.HTTPClient = &http.Client{
 		Timeout:   streamHTTPTimeout,
-		Transport: &retryAfterTransport{base: &reasoningKeyRewriteTransport{base: http.DefaultTransport}},
+		Transport: &retryAfterTransport{base: &geminiThoughtRewriteTransport{base: &reasoningKeyRewriteTransport{base: http.DefaultTransport}}},
 	}
 
 	return llmProvider{

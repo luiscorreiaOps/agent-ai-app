@@ -1,0 +1,7 @@
+{
+  "mode": "chat",
+  "prompt": "List the top-level folders and dashboards in this Grafana instance",
+  "agent": "generic",
+  "context": {},
+  "messages": []
+}

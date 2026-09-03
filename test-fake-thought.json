@@ -1,0 +1,43 @@
+{
+  "model": "gemini-3.8-flash",
+  "messages": [
+    {
+      "role": "user",
+      "content": "fetch alerts"
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "extra_content": {
+        "google": {
+          "thought_signature": "FAKE"
+        }
+      },
+      "tool_calls": [
+        {
+          "id": "call_123",
+          "type": "function",
+          "function": {
+            "name": "default_api:list_alerts",
+            "arguments": "{}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_123",
+      "name": "default_api:list_alerts",
+      "content": "No alerts"
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "default_api:list_alerts",
+        "description": "list alerts"
+      }
+    }
+  ]
+}

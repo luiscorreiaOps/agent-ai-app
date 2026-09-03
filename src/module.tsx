@@ -16,6 +16,7 @@ const DEFAULT_LIMITS: Limits = {
   auditLogFullContent: false,
   responseLanguage: 'english',
   maintenanceMode: false,
+  lightModeForDefaultAgent: false,
 };
 
 // Fetched once at module load, not per-render -- extension `configure`
@@ -96,7 +97,7 @@ function MaintenanceNotice() {
         <div className={styles.landingContent}>
           <div className={styles.logo}>
             <img
-              src={`public/plugins/${PLUGIN_ID}/img/logo-pixo2.png`}
+              src={`public/plugins/${PLUGIN_ID}/img/logo-pixo-large.png`}
               alt="Agent AI"
               // Deliberately smaller than the normal landing logo
               // (styles.logoImage, sized for the front-facing fox) -- the

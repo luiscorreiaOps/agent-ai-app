@@ -42,6 +42,8 @@ background:
   color-mix(in srgb, ${theme.colors.background.secondary} 35%, transparent);
 font-family: ${theme.typography.fontFamily};
 position: relative;
+user-select: none;
+cursor: default;
 `,
   landingContainer: css`
 display: flex;
@@ -167,6 +169,8 @@ justify-content: center;
 height: 100%;
 max-height: 100%;
 overflow: hidden;
+user-select: none;
+cursor: default;
 `,
   header: css`
 display: flex;
@@ -233,6 +237,7 @@ margin: ${theme.spacing(0.5)} 0 ${theme.spacing(3)} 0;
 text-align: center;
 `,
   landingInputWrapper: css`
+    position: relative;
 width: 100%;
 max-width: 800px;
 flex-shrink: 0;
@@ -505,6 +510,8 @@ overflow-wrap: anywhere;
 min-width: 0;
 max-width: 100%;
 transition: opacity 0.15s ease-in-out;
+user-select: text;
+cursor: text;
 
     /* Markdown Styles */
     p {

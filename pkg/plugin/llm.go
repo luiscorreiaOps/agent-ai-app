@@ -178,7 +178,7 @@ func (a *App) chatCompletion(ctx context.Context, req ChatRequest) (string, *Usa
 
 		buildReq := func(p llmProvider) openai.ChatCompletionRequest {
 			var tools []openai.Tool
-			if !isGeminiEndpoint(p.endpointURL) {
+			if true {
 				tools = a.allTools(ctx, agent)
 			}
 			return openai.ChatCompletionRequest{

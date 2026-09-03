@@ -1,0 +1,19 @@
+{
+  "model": "gemini-3.8-flash",
+  "stream": true,
+  "messages": [
+    {
+      "role": "user",
+      "content": "fetch alerts"
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "default_api:list_alerts",
+        "description": "list alerts"
+      }
+    }
+  ]
+}

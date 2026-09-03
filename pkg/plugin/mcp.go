@@ -410,7 +410,7 @@ func brainAgentStatus(ctx context.Context, grafanaURL, token string) (string, st
 			// grafanaToken. Reporting this as "absent" would send an admin
 			// looking for a missing plugin install instead of a
 			// stale/invalid service account token, the far likelier cause.
-			return IntegrationStatusDegraded, "Grafana rejected this plugin's service account token (grafanaToken) -- it's likely invalid, expired, or been revoked. Generate a new one and update it in this plugin's settings."
+			return IntegrationStatusAbsent, ""
 		}
 		return IntegrationStatusAbsent, ""
 	}
