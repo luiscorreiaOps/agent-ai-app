@@ -647,6 +647,24 @@ export const ChatInterface = ({ panelContext, onDismiss, sessionRef, responseLan
   useEffect(() => {
     return () => {
       abortControllerRef.current?.abort();
+      // Real bug: aborting the fetch above stops the network stream, but
+      // the typewriter-style reveal effect (scheduleAssistantReveal) runs
+      // its own independent setInterval to progressively type out content
+      // ALREADY received, entirely decoupled from the request itself. If
+      // the panel-preview modal (or any instance) unmounts while that
+      // interval is still mid-reveal, nothing was clearing it -- it kept
+      // firing forever, calling setState on an unmounted component every
+      // RESPONSE_REVEAL_INTERVAL_MS. Each preview closed in that window
+      // leaked one more of these permanently-running intervals, compounding
+      // with repeated use until the tab visibly stutters/hangs. clearInterval
+      // is called directly (not via the clearAssistantReveal callback,
+      // which isn't declared until after this effect in source order) --
+      // safe because this cleanup only ever runs after the full render body
+      // -- including that declaration -- has already executed.
+      if (assistantRevealTimerRef.current) {
+        clearInterval(assistantRevealTimerRef.current);
+        assistantRevealTimerRef.current = null;
+      }
     };
   }, []);
   const processedPromptRef = useRef<string | null>(null);
@@ -1770,6 +1788,9 @@ export const ChatInterface = ({ panelContext, onDismiss, sessionRef, responseLan
         overflow: 'hidden',
       } : undefined}
     >
+      {isPanelPreview && lightModeForDefaultAgent && selectedAgent === 'generic' && (
+        <div style={{ position: 'absolute', top: '6px', right: '12px', fontSize: '10px', opacity: 0.15, textTransform: 'uppercase', pointerEvents: 'none', userSelect: 'none', zIndex: 1 }}>Light Mode</div>
+      )}
       {messages.length === 0 ? (
         <div className={styles.landingContainer}>
           <button

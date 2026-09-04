@@ -56,7 +56,7 @@ func (a *App) streamChatCompletion(ctx context.Context, req ChatRequest, sender 
 	agent := resolveAgent(req.Agent)
 	agent = restrictAgentForRole(agent, requesterRole(ctx), a.settings.RestrictSpecialistAgentsForViewers)
 	maxContextTokens := maxContextTokensForAgent(agent, a.settings.MaxContextTokens, a.settings.AgentContextTokens)
-	maxTokens := maxResponseTokensForMode(req.Mode, a.settings.MaxTokens)
+	maxTokens := maxResponseTokensForMode(req.Mode, a.settings.MaxTokens, agent == "generic" && a.settings.LightModeForDefaultAgent)
 	var grafanaVersion string
 	brainAgentState := brainAgentStateUnknown
 	var brainAgentVersion string
@@ -72,7 +72,7 @@ func (a *App) streamChatCompletion(ctx context.Context, req ChatRequest, sender 
 			brainAgentState = brainAgentIntegrationOff
 		}
 	}
-	systemPrompt := buildSystemPrompt(req.Mode, agent, req.Context, a.settings.FastMode, a.settings.AgentContexts, a.settings.AgentLabels, resolveAgentActiveCount(a.settings.AgentActiveCount), a.settings.CustomGuardrails, a.settings.ResponseLanguage, a.settings.DisableGuardrailsForDebug, requesterRole(ctx), grafanaVersion, brainAgentState, brainAgentVersion)
+	systemPrompt := buildSystemPrompt(req.Mode, agent, req.Context, a.settings.FastMode, a.settings.LightModeForDefaultAgent, a.settings.AgentContexts, a.settings.AgentLabels, resolveAgentActiveCount(a.settings.AgentActiveCount), a.settings.CustomGuardrails, a.settings.ResponseLanguage, a.settings.DisableGuardrailsForDebug, requesterRole(ctx), grafanaVersion, brainAgentState, brainAgentVersion)
 	systemPrompt += "\n\n" + internetToolsPromptAddition(a.internetToolState(ctx))
 	systemPrompt += a.prefetchMemoryContext(ctx, req.Context)
 
@@ -325,7 +325,7 @@ func (a *App) streamChatCompletion(ctx context.Context, req ChatRequest, sender 
 			content = brainAgentUnavailableMessage(brainAgentState)
 			choice.Message.ReasoningContent = ""
 		}
-		if !toolWasCalled && looksLikeFabricatedSearchCitation(content, systemPrompt) {
+		if !toolWasCalled && looksLikeFabricatedSearchCitation(content, systemPrompt, hadPreSuppliedContext(req.Mode, req.Context)) {
 			a.logger.Warn("model fabricated a search citation with no search_web call this turn, correcting")
 			content = fabricatedSearchCitationMessage
 			choice.Message.ReasoningContent = ""

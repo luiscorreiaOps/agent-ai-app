@@ -182,7 +182,7 @@ func TestBuildSystemPrompt_IncludesBrainAgentCapabilitiesKnowledgeUnconditionall
 	// factual knowledge about Brain Agent's own UI/settings should be
 	// present regardless of brainAgentState -- it's independent of whether
 	// THIS assistant's own integration with it is turned on.
-	prompt := buildSystemPrompt("chat", "generic", nil, false, nil, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
+	prompt := buildSystemPrompt("chat", "generic", nil, false, false, nil, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
 	if !strings.Contains(prompt, "Semantic Search") {
 		t.Errorf("system prompt missing Brain Agent capabilities knowledge")
 	}

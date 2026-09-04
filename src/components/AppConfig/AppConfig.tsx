@@ -904,7 +904,7 @@ export function AppConfig({ plugin }: Props) {
 
             <Field
               label="Allowed datasource UIDs"
-              description="Comma-separated list of datasource UIDs the assistant may query. Leave empty for no restriction (the default). The service account already bounds what is reachable, but org-wide -- this narrows it further, e.g. to one team's datasources. Enforced in the backend on every tool call, not by instructing the model: datasources outside the list are hidden from list_datasources and refused even if the model names one it saw in a dashboard."
+              description="Comma-separated datasource UIDs the assistant may query. Empty = unrestricted (default). Enforced server-side on every call -- others stay hidden and are refused."
             >
               <Input
                 value={state.allowedDatasourceUIDs}
