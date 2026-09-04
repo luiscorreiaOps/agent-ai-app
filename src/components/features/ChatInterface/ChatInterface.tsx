@@ -76,6 +76,21 @@ const WAITING_RESPONSE_MESSAGE_STEP_TICKS = 20;
 const RESPONSE_REVEAL_INTERVAL_MS = 35;
 const RESPONSE_REVEAL_MIN_CHARS = 28;
 const RESPONSE_REVEAL_MAX_CHARS = 80;
+
+// Module-level (not component state) on purpose: each "Ask Agent AI" click
+// mounts a BRAND NEW ChatInterface instance for that panel-preview modal,
+// so a per-instance ref can't see a PREVIOUS instance's still-running
+// request -- unmounting only aborts that instance's own fetch/interval
+// (see the unmount cleanup effect below), it does not make the backend's
+// already-dispatched LLM+tool-calling round trip (7-9s typical) stop
+// early. Real, live-reproduced bug: closing and reopening the preview
+// faster than that (a few times, ~1s apart) queued up several of these
+// concurrently, and when multiple landed back at once their completions
+// all got processed in one synchronous burst -- the tab froze/showed
+// Chrome's "Page Unresponsive" dialog for 10+ seconds. This flag makes a
+// new preview mount refuse to fire another request while one is still
+// outstanding, instead of piling them up.
+let panelPreviewRequestInFlight = false;
 // How long a dispatch_worker chip stays visible after reporting 'done'/
 // 'error' before WorkerActivityTracker drops it -- long enough that a fast
 // worker's completion is still noticeable, short enough not to clutter the
@@ -1103,6 +1118,17 @@ export const ChatInterface = ({ panelContext, onDismiss, sessionRef, responseLan
   // box to send it from in this mode anyway (mount-only).
   useEffect(() => {
     if (!panelContext) { return; }
+    // See panelPreviewRequestInFlight's own doc comment: refuse to pile a
+    // new request on top of one still running from a just-closed preview,
+    // rather than let several overlap and freeze the tab when they land at
+    // once.
+    if (panelPreviewRequestInFlight) {
+      setMessages([{
+        role: 'assistant',
+        content: 'Still finishing the previous panel question. Please wait a moment, then reopen this to ask again.',
+      }]);
+      return;
+    }
     const dsUid = panelContext.targets?.[0]?.datasource?.uid;
     // A panel whose datasource is set via a dashboard template variable
     // (e.g. "${datasource}") reports that raw, unresolved variable string
@@ -1110,10 +1136,13 @@ export const ChatInterface = ({ panelContext, onDismiss, sessionRef, responseLan
     // UID fed a bogus value into the model's tool calls and broke them.
     const dsHint = dsUid && !dsUid.startsWith('$') ? ` (datasource uid: ${dsUid})` : '';
     const periodPhrase = formatRelativeTimeRange(panelContext.timeRange.from, panelContext.timeRange.to);
+    panelPreviewRequestInFlight = true;
     handleSend(
       `Explain the "${panelContext.title}" panel on the ` +
       `"${panelContext.dashboard.title}" dashboard${dsHint}, ${periodPhrase}.`
-    );
+    ).finally(() => {
+      panelPreviewRequestInFlight = false;
+    });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pre-fill input from panel context URL params — used when "Open in Agent AI"

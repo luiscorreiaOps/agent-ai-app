@@ -165,6 +165,52 @@ describe('ChatInterface -- panel-preview session persistence', () => {
     expect(saveSessionSpy).not.toHaveBeenCalled();
   });
 
+  // Real bug, live-reproduced: closing the panel-preview modal and reopening
+  // it faster than a request naturally completes (~8-9s) fired ANOTHER
+  // request on top of the still-running one -- unmounting only aborts that
+  // instance's own controller, it does not stop the backend's already-
+  // dispatched round trip. Doing this a few times piled up several
+  // concurrent requests, and when multiple landed back at once, processing
+  // all their completions in one synchronous burst froze the tab for 10+
+  // seconds (Chrome's "Page Unresponsive" dialog). panelPreviewRequestInFlight
+  // must refuse to fire a second request while a previous one is still out.
+  it('refuses a second panel-preview request while a previous one is still in flight', async () => {
+    const streamChatMock = streamChat as unknown as jest.Mock;
+    streamChatMock.mockClear();
+    let releaseFirst: () => void = () => {};
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    streamChatMock.mockImplementationOnce(async function* () {
+      await firstGate;
+      yield { content: 'first reply', done: true };
+    });
+
+    const first = render(<ChatInterface panelContext={fakePanelContext} onDismiss={jest.fn()} />);
+    // Let the mount effect actually call streamChat and start awaiting the gate.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Simulate closing that preview (unmount) and opening a fresh one while
+    // the first request is still outstanding.
+    first.unmount();
+    render(<ChatInterface panelContext={fakePanelContext} onDismiss={jest.fn()} />);
+
+    await waitFor(() =>
+      expect(screen.queryByText(/Still finishing the previous panel question/)).toBeInTheDocument()
+    );
+    // The second mount must not have called streamChat again.
+    expect(streamChatMock).toHaveBeenCalledTimes(1);
+
+    // Let the first request finish so it doesn't leak into later tests.
+    releaseFirst();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  });
+
   it('still persists a session in normal (non-preview) chat mode', async () => {
     render(<ChatInterface />);
 
