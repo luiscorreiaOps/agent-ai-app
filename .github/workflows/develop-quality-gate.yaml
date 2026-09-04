@@ -123,6 +123,13 @@ jobs:
       - name: Go vulnerability scan
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./pkg/...
 
+      - name: Go OSV lockfile scan
+        run: |
+          set -euo pipefail
+          osv_dir="$(mktemp -d)"
+          cp go.mod go.sum "$osv_dir/"
+          docker run --rm -v "${osv_dir}:/src:ro" ghcr.io/google/osv-scanner@sha256:8108ae94eadea5a02c9bec6e646909d5b790b44bd62d7f5b7f0b1d6d0ffc7734 scan --format vertical -L /src/go.mod
+
       - name: Secret scan
         run: go run github.com/zricethezav/gitleaks/v8@latest detect --source . --no-git --redact --verbose
 
@@ -147,8 +154,17 @@ jobs:
       - name: Build backend binaries
         run: |
           set -euo pipefail
+          rm -rf .cache
           mage -v
           chmod 0755 dist/gpx_*
+
+      - name: Check Go build manifest scope
+        run: |
+          set -euo pipefail
+          if [ -f dist/go_plugin_build_manifest ] && grep -E ':(\.cache|node_modules)/' dist/go_plugin_build_manifest; then
+            echo "::error::go_plugin_build_manifest contains local cache or dependency paths."
+            exit 1
+          fi
 
       - name: Check React 19 runtime compatibility
         run: |
@@ -184,7 +200,7 @@ jobs:
           echo "archive_name=${archive_name}" >> "$GITHUB_OUTPUT"
 
       - name: Validate plugin archive
-        run: npx --cache .cache/npm -y @grafana/plugin-validator@latest -jsonOutput "${{ steps.package.outputs.archive_name }}"
+        run: npx --cache "${RUNNER_TEMP}/npm-cache" -y @grafana/plugin-validator@latest -jsonOutput "${{ steps.package.outputs.archive_name }}"
 
       - name: Upload validation archive
         uses: actions/upload-artifact@v4
