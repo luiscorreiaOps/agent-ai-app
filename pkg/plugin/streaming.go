@@ -325,7 +325,7 @@ func (a *App) streamChatCompletion(ctx context.Context, req ChatRequest, sender 
 			content = brainAgentUnavailableMessage(brainAgentState)
 			choice.Message.ReasoningContent = ""
 		}
-		if !toolWasCalled && looksLikeFabricatedSearchCitation(content) {
+		if !toolWasCalled && looksLikeFabricatedSearchCitation(content, systemPrompt) {
 			a.logger.Warn("model fabricated a search citation with no search_web call this turn, correcting")
 			content = fabricatedSearchCitationMessage
 			choice.Message.ReasoningContent = ""

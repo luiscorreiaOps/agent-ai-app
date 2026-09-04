@@ -15,9 +15,9 @@ concurrency:
 
 jobs:
   test:
-    name: Lint, Typecheck, Test, Build
+    name: Grafana review validation
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -35,56 +35,8 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install frontend dependencies
-        run: npm ci
-
-      - name: Go format
-        run: |
-          unformatted=$(gofmt -l Magefile.go pkg)
-          if [ -n "$unformatted" ]; then
-            echo "::error::Files not properly formatted:"
-            echo "$unformatted"
-            exit 1
-          fi
-
-      - name: Go lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: latest
-
-      - name: Go vet
-        run: go vet ./pkg/...
-
-      - name: Go test
-        run: go test -v -race -count=1 ./pkg/...
-
-      - name: Go security scan
-        run: go run github.com/securego/gosec/v2/cmd/gosec@latest ./pkg/...
-
-      - name: Go vulnerability scan
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./pkg/...
-
-      - name: Go OSV lockfile scan
-        run: |
-          set -euo pipefail
-          osv_dir="$(mktemp -d)"
-          cp go.mod go.sum "$osv_dir/"
-          docker run --rm -v "${osv_dir}:/src:ro" ghcr.io/google/osv-scanner@sha256:8108ae94eadea5a02c9bec6e646909d5b790b44bd62d7f5b7f0b1d6d0ffc7734 scan --format vertical -L /src/go.mod
-
-      - name: Frontend lint
-        run: npm run lint
-
-      - name: Frontend typecheck
-        run: npm run typecheck
-
-      - name: Frontend test
-        run: npm run test:ci
-
-      - name: Build frontend
-        run: npm run build
-
-      - name: Build backend
-        run: go build -buildvcs=false ./pkg/...
+      - name: Run Grafana-style plugin review validation
+        run: npm run validate:review
 
   docker:
     name: Build and Push Docker

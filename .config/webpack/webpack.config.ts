@@ -196,6 +196,10 @@ const config = async (env: Env): Promise<Configuration> => {
               search: /\%PLUGIN_ID\%/g,
               replace: pluginJson.id,
             },
+            {
+              search: /src\/img\//g,
+              replace: `/public/plugins/${pluginJson.id}/img/`,
+            },
           ],
         },
       ]),

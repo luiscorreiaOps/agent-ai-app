@@ -5,8 +5,6 @@ import { ActivityAccordion } from './components/ActivityAccordion';
 import { WorkerActivityTracker } from './components/WorkerActivityTracker';
 import { FilePreview } from './components/FilePreview';
 import { AttachmentModal } from './components/AttachmentModal';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 
 // Grafana's own location abstraction -- NOT react-router-dom. Graft's original
 // code used react-router-dom hooks (useSearchParams/useNavigate/useLocation),
@@ -285,57 +283,232 @@ const buildAnalysisContext = (
 
 
 
-const MemoizedReactMarkdown = React.memo(({ content, theme, onRender, isStreaming }: { content: string; theme: GrafanaTheme2; onRender: () => void; isStreaming: boolean }) => {
-  const components = React.useMemo(() => ({
-    a({ href, children, ...props }: any) {
-      // Model output is untrusted -- reject javascript:/data: etc. so a
-      // markdown link crafted by the model (or echoed from tool-call data)
-      // can't execute script when clicked. Only allow safe schemes.
-      const safeHref = /^(https?:|mailto:)/i.test(href || '') ? href : undefined;
-      return (
-        <a href={safeHref} target="_blank" rel="noopener noreferrer" {...props}>
-          {children}
-        </a>
-      );
-    },
-    code({ node, inline, className, children, ...props }: any) {
-      const match = /language-(\w+)/.exec(className || '');
-      const language = match ? match[1] : '';
+type MarkdownBlock =
+  | { type: 'heading'; level: number; text: string }
+  | { type: 'paragraph'; text: string }
+  | { type: 'blockquote'; text: string }
+  | { type: 'unordered-list'; items: string[] }
+  | { type: 'ordered-list'; items: string[] }
+  | { type: 'code'; language: string; text: string }
+  | { type: 'table'; headers: string[]; rows: string[][] };
 
-      // Handle mermaid diagrams-only render after streaming completes
-      if (!inline && language === 'mermaid') {
-        return (
-          <Suspense fallback={<pre>{String(children).replace(/\n$/, '')}</pre>}>
-            <MermaidBlock theme={theme} onRender={onRender} isStreaming={isStreaming}>
-              {String(children).replace(/\n$/, '')}
-            </MermaidBlock>
-          </Suspense>
-        );
-      }
+const safeMarkdownHref = (href: string): string | undefined => {
+  return /^(https?:|mailto:)/i.test(href) ? href : undefined;
+};
 
-      // Handle other code blocks
-      return !inline && match ? (
-        <Suspense fallback={<pre>{String(children).replace(/\n$/, '')}</pre>}>
-          <CodeBlock language={language} theme={theme}>
-            {String(children).replace(/\n$/, '')}
-          </CodeBlock>
-        </Suspense>
-      ) : (
-        <code className={className} {...props}>
-          {children}
-        </code>
-      );
+const isTableSeparator = (line: string): boolean => {
+  const cells = line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|');
+  return cells.length > 1 && cells.every((cell) => /^:?-{3,}:?$/.test(cell.trim()));
+};
+
+const splitTableCells = (line: string): string[] => {
+  return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((cell) => cell.trim());
+};
+
+const parseMarkdownBlocks = (content: string): MarkdownBlock[] => {
+  const lines = normalizeMarkdown(content).split(/\r?\n/);
+  const blocks: MarkdownBlock[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (!line.trim()) {
+      i += 1;
+      continue;
     }
-  }), [theme, isStreaming, onRender]);
+
+    const fence = /^```([A-Za-z0-9_-]*)\s*$/.exec(line.trim());
+    if (fence) {
+      const codeLines: string[] = [];
+      i += 1;
+      while (i < lines.length && !/^```\s*$/.test(lines[i].trim())) {
+        codeLines.push(lines[i]);
+        i += 1;
+      }
+      if (i < lines.length) {
+        i += 1;
+      }
+      blocks.push({ type: 'code', language: fence[1] || '', text: codeLines.join('\n') });
+      continue;
+    }
+
+    const heading = /^(#{1,6})\s+(.+)$/.exec(line);
+    if (heading) {
+      blocks.push({ type: 'heading', level: heading[1].length, text: heading[2].trim() });
+      i += 1;
+      continue;
+    }
+
+    if (line.includes('|') && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+      const headers = splitTableCells(line);
+      const rows: string[][] = [];
+      i += 2;
+      while (i < lines.length && lines[i].includes('|') && lines[i].trim()) {
+        rows.push(splitTableCells(lines[i]));
+        i += 1;
+      }
+      blocks.push({ type: 'table', headers, rows });
+      continue;
+    }
+
+    if (/^\s*[-*+]\s+/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) {
+        items.push(lines[i].replace(/^\s*[-*+]\s+/, '').trim());
+        i += 1;
+      }
+      blocks.push({ type: 'unordered-list', items });
+      continue;
+    }
+
+    if (/^\s*\d+\.\s+/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
+        items.push(lines[i].replace(/^\s*\d+\.\s+/, '').trim());
+        i += 1;
+      }
+      blocks.push({ type: 'ordered-list', items });
+      continue;
+    }
+
+    if (/^\s*>\s?/.test(line)) {
+      const quoteLines: string[] = [];
+      while (i < lines.length && /^\s*>\s?/.test(lines[i])) {
+        quoteLines.push(lines[i].replace(/^\s*>\s?/, '').trim());
+        i += 1;
+      }
+      blocks.push({ type: 'blockquote', text: quoteLines.join(' ') });
+      continue;
+    }
+
+    const paragraphLines: string[] = [];
+    while (
+      i < lines.length &&
+      lines[i].trim() &&
+      !/^```/.test(lines[i].trim()) &&
+      !/^(#{1,6})\s+/.test(lines[i]) &&
+      !/^\s*[-*+]\s+/.test(lines[i]) &&
+      !/^\s*\d+\.\s+/.test(lines[i]) &&
+      !/^\s*>\s?/.test(lines[i])
+    ) {
+      paragraphLines.push(lines[i].trim());
+      i += 1;
+    }
+    blocks.push({ type: 'paragraph', text: paragraphLines.join(' ') });
+  }
+
+  return blocks;
+};
+
+const renderInlineMarkdown = (text: string): React.ReactNode[] => {
+  const nodes: React.ReactNode[] = [];
+  const pattern = /(`[^`]+`|\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_)/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(text.slice(lastIndex, match.index));
+    }
+
+    const token = match[0];
+    const key = `${match.index}-${token}`;
+    const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(token);
+    if (link) {
+      const safeHref = safeMarkdownHref(link[2].trim());
+      nodes.push(safeHref ? (
+        <a key={key} href={safeHref} target="_blank" rel="noopener noreferrer">
+          {link[1]}
+        </a>
+      ) : link[1]);
+    } else if (token.startsWith('`')) {
+      nodes.push(<code key={key}>{token.slice(1, -1)}</code>);
+    } else if (token.startsWith('**') || token.startsWith('__')) {
+      nodes.push(<strong key={key}>{token.slice(2, -2)}</strong>);
+    } else {
+      nodes.push(<em key={key}>{token.slice(1, -1)}</em>);
+    }
+
+    lastIndex = pattern.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+
+  return nodes;
+};
+
+const MemoizedMarkdown = React.memo(({ content, theme, onRender, isStreaming }: { content: string; theme: GrafanaTheme2; onRender: () => void; isStreaming: boolean }) => {
+  const blocks = React.useMemo(() => parseMarkdownBlocks(content), [content]);
 
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-      {normalizeMarkdown(content)}
-    </ReactMarkdown>
+    <>
+      {blocks.map((block, index) => {
+        if (block.type === 'code') {
+          if (block.language === 'mermaid') {
+            return (
+              <Suspense key={index} fallback={<pre>{block.text}</pre>}>
+                <MermaidBlock theme={theme} onRender={onRender} isStreaming={isStreaming}>
+                  {block.text}
+                </MermaidBlock>
+              </Suspense>
+            );
+          }
+
+          return block.language ? (
+            <Suspense key={index} fallback={<pre>{block.text}</pre>}>
+              <CodeBlock language={block.language} theme={theme}>
+                {block.text}
+              </CodeBlock>
+            </Suspense>
+          ) : (
+            <pre key={index}><code>{block.text}</code></pre>
+          );
+        }
+
+        if (block.type === 'heading') {
+          const Heading = `h${block.level}` as keyof JSX.IntrinsicElements;
+          return <Heading key={index}>{renderInlineMarkdown(block.text)}</Heading>;
+        }
+
+        if (block.type === 'blockquote') {
+          return <blockquote key={index}>{renderInlineMarkdown(block.text)}</blockquote>;
+        }
+
+        if (block.type === 'unordered-list') {
+          return <ul key={index}>{block.items.map((item, itemIndex) => <li key={itemIndex}>{renderInlineMarkdown(item)}</li>)}</ul>;
+        }
+
+        if (block.type === 'ordered-list') {
+          return <ol key={index}>{block.items.map((item, itemIndex) => <li key={itemIndex}>{renderInlineMarkdown(item)}</li>)}</ol>;
+        }
+
+        if (block.type === 'table') {
+          return (
+            <table key={index}>
+              <thead>
+                <tr>{block.headers.map((header, cellIndex) => <th key={cellIndex}>{renderInlineMarkdown(header)}</th>)}</tr>
+              </thead>
+              <tbody>
+                {block.rows.map((row, rowIndex) => (
+                  <tr key={rowIndex}>
+                    {block.headers.map((_, cellIndex) => <td key={cellIndex}>{renderInlineMarkdown(row[cellIndex] ?? '')}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          );
+        }
+
+        return <p key={index}>{renderInlineMarkdown(block.text)}</p>;
+      })}
+    </>
   );
 });
 
-MemoizedReactMarkdown.displayName = 'MemoizedReactMarkdown';
+MemoizedMarkdown.displayName = 'MemoizedMarkdown';
 
 
 
@@ -2014,7 +2187,7 @@ export const ChatInterface = ({ panelContext, onDismiss, sessionRef, responseLan
                         </ActivityAccordion>
                       )}
                       {mainContent && (
-                        <MemoizedReactMarkdown
+                        <MemoizedMarkdown
                           content={mainContent}
                           theme={theme}
                           onRender={scrollToBottom}

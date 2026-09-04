@@ -1,6 +1,6 @@
 <table>
 <tr>
-<td width="110" valign="middle" align="center"><img src="/public/plugins/shortbobcat2735-agentai-app/img/logo-pixo-large.png" width="90" alt="Agent AI" /></td>
+<td width="110" valign="middle" align="center"><img src="src/img/logo-pixo-large.png" width="90" alt="Agent AI" /></td>
 <td valign="middle">
 
 # Agent AI
@@ -27,16 +27,16 @@ datasources, or other Grafana resources.
 ## Screenshots
 
 <p>
-  <img src="/public/plugins/shortbobcat2735-agentai-app/img/screenshots/chat-landing.png" width="760" alt="Chat" />
+  <img src="src/img/screenshots/chat-landing.png" width="760" alt="Chat" />
 </p>
 <p>
-  <img src="/public/plugins/shortbobcat2735-agentai-app/img/screenshots/agents-page.png" width="760" alt="Custom specialist agents" />
+  <img src="src/img/screenshots/agents-page.png" width="760" alt="Custom specialist agents" />
 </p>
 <p>
-  <img src="/public/plugins/shortbobcat2735-agentai-app/img/screenshots/panel-menu.png" width="760" alt="Panel menu integration" />
+  <img src="src/img/screenshots/panel-menu.png" width="760" alt="Panel menu integration" />
 </p>
 <p>
-  <img src="/public/plugins/shortbobcat2735-agentai-app/img/screenshots/configuration-page.png" width="760" alt="Configuration" />
+  <img src="src/img/screenshots/configuration-page.png" width="760" alt="Configuration" />
 </p>
 
 ## Main capabilities

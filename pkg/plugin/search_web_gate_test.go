@@ -495,3 +495,39 @@ func TestInternetToolsPromptAddition_MentionsToolOnlyWhenSearchAvailable(t *test
 		t.Errorf("expected the prompt addition to reference the real tool name %q", onlineSearchToolName)
 	}
 }
+
+// -- looksLikeFabricatedSearchCitation -----------------------------------------
+
+// Live-found false positive: asked who built Agent AI, or which repo Brain
+// Agent is, the model correctly states a fact baked into the system prompt
+// (agentPersona / brainAgentCapabilitiesKnowledge) and sometimes formats the
+// URL as a markdown link. That link syntax alone must not be treated as a
+// fabricated live-search citation when the linked URL is already grounded
+// in the system prompt -- only an actual claim of an external, ungrounded
+// source (a link to some other site, "Source: ...", "according to ...")
+// should be. Deliberately tested against a generic systemPrompt fact rather
+// than a specific real one, since the check is meant to be fact-agnostic.
+func TestLooksLikeFabricatedSearchCitation_GroundedLinkIsNotFlagged(t *testing.T) {
+	t.Parallel()
+	const systemPrompt = "Provenance: point to the source at https://github.com/example-org/some-plugin."
+	cases := []struct {
+		name string
+		in   string
+		want bool
+	}{
+		{"bare url grounded in prompt", "Built by Someone. https://github.com/example-org/some-plugin", false},
+		{"markdown link grounded in prompt", "Built by Someone. [GitHub](https://github.com/example-org/some-plugin)", false},
+		{"markdown link grounded, different case", "See [here](https://GITHUB.com/Example-Org/Some-Plugin).", false},
+		{"markdown link NOT in prompt", "See [Investopedia](https://www.investopedia.com/terms/p/prometheus)", true},
+		{"source phrase", "Source: Loki Documentation", true},
+		{"grounded link plus fabricated source", "[GitHub](https://github.com/example-org/some-plugin) Source: Wikipedia", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			if got := looksLikeFabricatedSearchCitation(c.in, systemPrompt); got != c.want {
+				t.Errorf("looksLikeFabricatedSearchCitation(%q) = %v, want %v", c.in, got, c.want)
+			}
+		})
+	}
+}

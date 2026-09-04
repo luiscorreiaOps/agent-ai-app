@@ -333,7 +333,7 @@ func (a *App) chatCompletion(ctx context.Context, req ChatRequest) (string, *Usa
 			content = brainAgentUnavailableMessage(brainAgentState)
 			reasoning = ""
 		}
-		if !toolWasCalled && looksLikeFabricatedSearchCitation(content) {
+		if !toolWasCalled && looksLikeFabricatedSearchCitation(content, systemPrompt) {
 			a.logger.Warn("model fabricated a search citation with no search_web call this turn, correcting")
 			content = fabricatedSearchCitationMessage
 			reasoning = ""
@@ -938,12 +938,39 @@ func looksLikeFabricatedMemorySuccess(response string) bool {
 // second-guessed.
 var fabricatedSearchCitationPattern = regexp.MustCompile(`(?i)(source:\s*\S|according to \[?[a-z]|\bciting \S|\[[^\]]{2,80}\]\(https?://)`)
 
+// fabricatedSearchCitationLinkURLPattern pulls just the URL out of a
+// markdown link so it can be checked against the system prompt.
+var fabricatedSearchCitationLinkURLPattern = regexp.MustCompile(`\[[^\]]{2,80}\]\((https?://[^\s)]+)\)`)
+
 // looksLikeFabricatedSearchCitation reports whether response claims an
 // external source/citation -- see fabricatedSearchCitationPattern. Only
 // meaningful combined with the toolWasCalled guard at the call site; this
 // alone can't tell a fabricated citation from a real one.
-func looksLikeFabricatedSearchCitation(response string) bool {
-	return fabricatedSearchCitationPattern.MatchString(response)
+//
+// systemPrompt is checked before flagging a markdown link: live-found false
+// positive, asked "who built Agent AI" or "which is Brain Agent's repo", the
+// model correctly cites a fact already baked into the system prompt
+// (agentPersona / brainAgentCapabilitiesKnowledge), sometimes formatted as a
+// markdown link. That's not a live web search claim, so a link whose exact
+// URL already appears in systemPrompt -- meaning the model already knew it
+// before this response, not from a search it never ran -- doesn't count.
+// Deliberately fact-agnostic (checks systemPrompt's actual content, not a
+// hardcoded list of "known" URLs) so a new baked-in fact/link never needs
+// its own entry here. A "source:"/"according to"/"citing" phrase, or a link
+// to any URL NOT already in systemPrompt, is still flagged either way.
+func looksLikeFabricatedSearchCitation(response, systemPrompt string) bool {
+	if !fabricatedSearchCitationPattern.MatchString(response) {
+		return false
+	}
+	ungrounded := fabricatedSearchCitationLinkURLPattern.ReplaceAllStringFunc(response, func(link string) string {
+		m := fabricatedSearchCitationLinkURLPattern.FindStringSubmatch(link)
+		url := strings.TrimRight(m[1], "/")
+		if strings.Contains(strings.ToLower(systemPrompt), strings.ToLower(url)) {
+			return "" // already grounded in the system prompt -- not a live search claim
+		}
+		return link
+	})
+	return fabricatedSearchCitationPattern.MatchString(ungrounded)
 }
 
 // fabricatedSearchCitationMessage replaces the ENTIRE response rather than
@@ -979,7 +1006,7 @@ func brainAgentStatusLine(state brainAgentInstallState) string {
 // assistant's own integration with it is turned on. Sourced from
 // brain-agent-app's own code/README, not guessed -- verify there before
 // changing any of this if brain-agent's UI/settings change.
-const brainAgentCapabilitiesKnowledge = `Brain Agent is a separate, optional Grafana plugin (long-term memory/RAG for this assistant). If asked what something in Brain Agent does, answer in 1-2 short, plain sentences first -- always -- then offer to go into more detail if the user wants it. Never lead with a long explanation.
+const brainAgentCapabilitiesKnowledge = `Brain Agent is a separate, optional Grafana plugin (long-term memory/RAG for this assistant), with its own separate source repository: https://github.com/luiscorreiaOps/brain-agent-app -- NOT the same repo as this assistant's own Agent AI codebase. If asked which repo Brain Agent is, or where to find/report an issue on Brain Agent specifically, point here, not at Agent AI's own repo (see the Provenance fact above). If asked what something in Brain Agent does, answer in 1-2 short, plain sentences first -- always -- then offer to go into more detail if the user wants it. Never lead with a long explanation.
 
 Its "Brain Hub" page (Viewer role) shows: an Agent AI integration status banner, a Capabilities list (Contextual Memory Engine -- stores preferences/architecture/facts locally and uses them automatically without extra prompts; Incident Memory & Runbooks -- turns resolved alerts into searchable knowledge, can distill similar facts into one "golden record" runbook; Automated Root Cause Investigation -- cross-references memory with logs/traces when asked about a firing alert; Low-Latency Execution -- native Go backend, near real-time MCP), Active Contexts & Projects (memory is isolated per project; click one to see its stored facts), Pending Suggestions (facts the AI inferred on its own, awaiting Editor/Admin approval before becoming real searchable memories), Brain Toggles (Semantic Search, Auto-learning from Alerts, Strict Tenancy), and Data Protection Settings (At-Rest and "RPC Bus" encryption, each shown with a live ENABLED/DISABLED or ACTIVE/INACTIVE state).
 
