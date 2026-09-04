@@ -49,6 +49,12 @@ type ToolExecutor struct {
 	// must handle that case, never assume it's set.
 	mcp *MCPClient
 
+	// allowedDatasourceUIDs mirrors Settings.AllowedDatasourceUIDs. Empty
+	// means unrestricted. Enforced in resolveDatasourceUID -- the single
+	// point every datasource-bound tool goes through -- and applied to
+	// discovery so the model is never shown a datasource it cannot use.
+	allowedDatasourceUIDs map[string]bool
+
 	// internetToolsEnabled mirrors Settings.EnableInternetTools at
 	// construction time -- defense in depth, independent of onlineSearch
 	// being non-nil: even if a client existed from a bug, partial reload, or
@@ -411,9 +417,14 @@ func (te *ToolExecutor) listDatasources(ctx context.Context) (string, error) {
 		Type string `json:"type"`
 		UID  string `json:"uid"`
 	}
-	summaries := make([]dsSummary, len(datasources))
-	for i, ds := range datasources {
-		summaries[i] = dsSummary{Name: ds.Name, Type: ds.Type, UID: ds.UID}
+	// Filtered at the source: the model must never be shown a datasource it
+	// cannot query, or it will propose it and fail on the next call.
+	summaries := make([]dsSummary, 0, len(datasources))
+	for _, ds := range datasources {
+		if !te.datasourceAllowed(ds.UID) {
+			continue
+		}
+		summaries = append(summaries, dsSummary{Name: ds.Name, Type: ds.Type, UID: ds.UID})
 	}
 
 	out, _ := json.Marshal(summaries)
@@ -1605,17 +1616,47 @@ func (te *ToolExecutor) datasourceUIDsByType(ctx context.Context, dsType string)
 // silently pick "the first Prometheus it happens to see"; the error message
 // itself names the candidates so the caller can retry immediately, without
 // a round trip through list_datasources first.
+// datasourceAllowed reports whether a UID may be queried. An empty allowlist
+// means unrestricted -- the default, and what every existing install gets.
+func (te *ToolExecutor) datasourceAllowed(uid string) bool {
+	if len(te.allowedDatasourceUIDs) == 0 {
+		return true
+	}
+	return te.allowedDatasourceUIDs[uid]
+}
+
+// allowedUIDs filters a UID list down to what the admin permits.
+func (te *ToolExecutor) allowedUIDs(uids []string) []string {
+	if len(te.allowedDatasourceUIDs) == 0 {
+		return uids
+	}
+	out := make([]string, 0, len(uids))
+	for _, uid := range uids {
+		if te.allowedDatasourceUIDs[uid] {
+			out = append(out, uid)
+		}
+	}
+	return out
+}
+
 func (te *ToolExecutor) resolveDatasourceUID(ctx context.Context, dsType, providedUID string) (string, error) {
 	if providedUID != "" {
+		// A UID chosen by the model is still checked: it may have seen one
+		// in a dashboard, an alert rule, or the panel context, none of which
+		// go through the filtered discovery path.
+		if !te.datasourceAllowed(providedUID) {
+			return "", fmt.Errorf("datasource %q is not permitted by this plugin's configuration -- call list_datasources to see the ones you may query", providedUID)
+		}
 		return providedUID, nil
 	}
 	uids, err := te.datasourceUIDsByType(ctx, dsType)
 	if err != nil {
 		return "", err
 	}
+	uids = te.allowedUIDs(uids)
 	switch len(uids) {
 	case 0:
-		return "", fmt.Errorf("no datasource of type %q found", dsType)
+		return "", fmt.Errorf("no permitted datasource of type %q found", dsType)
 	case 1:
 		return uids[0], nil
 	default:

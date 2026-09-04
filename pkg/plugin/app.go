@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -230,6 +231,16 @@ func NewApp(ctx context.Context, appSettings backend.AppInstanceSettings) (insta
 	grafanaURL := settings.GrafanaURL
 
 	te := NewToolExecutor(grafanaURL, logger)
+	if len(settings.AllowedDatasourceUIDs) > 0 {
+		allowed := make(map[string]bool, len(settings.AllowedDatasourceUIDs))
+		for _, uid := range settings.AllowedDatasourceUIDs {
+			if uid = strings.TrimSpace(uid); uid != "" {
+				allowed[uid] = true
+			}
+		}
+		te.allowedDatasourceUIDs = allowed
+		logger.Info("Tool executor restricted to datasources", "count", len(allowed))
+	}
 	// Grafana strips auth headers from plugin backend requests, so a service
 	// account token is needed for the tool executor to call the Grafana API.
 	// When forwarded headers are present they take precedence (future-proofing).
