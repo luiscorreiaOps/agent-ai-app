@@ -70,6 +70,7 @@ type Settings struct {
 	ChatQueueWaitSeconds               *int               `json:"chatQueueWaitSeconds,omitempty"`
 	ChatQueueDepth                     *int               `json:"chatQueueDepth,omitempty"`
 	EnabledTools                       []string           `json:"enabledTools,omitempty"`
+	AllowedDatasourceUIDs              []string           `json:"allowedDatasourceUIDs,omitempty"`
 	AttachmentMaxBytes                 int                `json:"attachmentMaxBytes,omitempty"`
 	EnableStandaloneChat               *bool              `json:"enableStandaloneChat,omitempty"`
 	EnableDashboardIntegration         *bool              `json:"enableDashboardIntegration,omitempty"`

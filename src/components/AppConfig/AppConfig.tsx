@@ -188,6 +188,8 @@ interface JsonData {
   responseLanguage?: string;
   /** Internal URL the plugin backend uses to reach the Grafana API. Defaults to http://localhost:3000, which is wrong on any install listening elsewhere -- see pkg/plugin/settings.go. */
   grafanaURL?: string;
+  /** Restricts every tool call to these datasource UIDs. Empty = unrestricted. Enforced in the backend (resolveDatasourceUID), never in the prompt -- see pkg/plugin/tool_executor.go. */
+  allowedDatasourceUIDs?: string[];
   fallbackProviders?: FallbackProviderJsonData[];
   auditLogFullContent?: boolean;
   /** Whether this plugin may automatically use grafana-llm-app (if installed and configured) as an LLM provider -- see pkg/plugin/llmapp.go. */
@@ -276,6 +278,9 @@ export function AppConfig({ plugin }: Props) {
     customGuardrails: jsonData.customGuardrails || '',
     responseLanguage: jsonData.responseLanguage || 'english',
     grafanaURL: jsonData.grafanaURL || '',
+    // Edited as a comma-separated list: a rarely touched admin field, not
+    // worth a picker that would have to load and track every datasource.
+    allowedDatasourceUIDs: (jsonData.allowedDatasourceUIDs || []).join(', '),
     auditLogFullContent: jsonData.auditLogFullContent ?? false,
     restrictSpecialistAgentsForViewers: jsonData.restrictSpecialistAgentsForViewers ?? false,
     enableLLMAppIntegration: jsonData.enableLLMAppIntegration ?? true,
@@ -380,6 +385,10 @@ export function AppConfig({ plugin }: Props) {
     setState({ ...state, grafanaURL: event.target.value });
   };
 
+  const onChangeAllowedDatasourceUIDs = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setState({ ...state, allowedDatasourceUIDs: event.target.value });
+  };
+
   const onChangeResponseLanguage = (value: string) => {
     setState({ ...state, responseLanguage: value });
   };
@@ -468,6 +477,10 @@ export function AppConfig({ plugin }: Props) {
           // Sent trimmed and only when set, so an empty field keeps the
           // backend's own default rather than storing a blank string.
           ...(state.grafanaURL.trim() ? { grafanaURL: state.grafanaURL.trim() } : {}),
+          allowedDatasourceUIDs: state.allowedDatasourceUIDs
+            .split(',')
+            .map((uid) => uid.trim())
+            .filter(Boolean),
           fallbackProviders: state.fallbackProviders.map((fp) => ({ endpointURL: fp.endpointURL, model: fp.model })),
           auditLogFullContent: state.auditLogFullContent,
           restrictSpecialistAgentsForViewers: state.restrictSpecialistAgentsForViewers,
@@ -886,6 +899,17 @@ export function AppConfig({ plugin }: Props) {
                 ]}
                 value={state.responseLanguage}
                 onChange={onChangeResponseLanguage}
+              />
+            </Field>
+
+            <Field
+              label="Allowed datasource UIDs"
+              description="Comma-separated list of datasource UIDs the assistant may query. Leave empty for no restriction (the default). The service account already bounds what is reachable, but org-wide -- this narrows it further, e.g. to one team's datasources. Enforced in the backend on every tool call, not by instructing the model: datasources outside the list are hidden from list_datasources and refused even if the model names one it saw in a dashboard."
+            >
+              <Input
+                value={state.allowedDatasourceUIDs}
+                onChange={onChangeAllowedDatasourceUIDs}
+                placeholder="e.g. prometheus-prod, loki-prod"
               />
             </Field>
 

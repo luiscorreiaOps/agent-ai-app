@@ -1226,3 +1226,73 @@ func TestToolExecutor_ListFolders_NoTruncationNoteBelowLimit(t *testing.T) {
 		t.Errorf("result with 1 folder should not note truncation, got: %s", result)
 	}
 }
+
+// The datasource allowlist is a security control, not a hint: a UID the model
+// picked up from a dashboard, an alert rule, or the panel context never goes
+// through the filtered discovery path, so the check has to sit on the
+// resolution itself.
+func TestResolveDatasourceUID_Allowlist(t *testing.T) {
+	grafanaMock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[
+			{"name":"Prom A","type":"prometheus","uid":"allowed"},
+			{"name":"Prom B","type":"prometheus","uid":"forbidden"}
+		]`))
+	}))
+	defer grafanaMock.Close()
+
+	t.Run("rejects an explicit uid outside the list", func(t *testing.T) {
+		te := NewToolExecutor(grafanaMock.URL, log.DefaultLogger)
+		te.allowedDatasourceUIDs = map[string]bool{"allowed": true}
+
+		if _, err := te.resolveDatasourceUID(context.Background(), "prometheus", "forbidden"); err == nil {
+			t.Fatal("a uid outside the allowlist must be refused")
+		}
+	})
+
+	t.Run("accepts an allowed explicit uid", func(t *testing.T) {
+		te := NewToolExecutor(grafanaMock.URL, log.DefaultLogger)
+		te.allowedDatasourceUIDs = map[string]bool{"allowed": true}
+
+		uid, err := te.resolveDatasourceUID(context.Background(), "prometheus", "allowed")
+		if err != nil || uid != "allowed" {
+			t.Fatalf("uid=%q err=%v", uid, err)
+		}
+	})
+
+	t.Run("auto-resolution skips excluded datasources", func(t *testing.T) {
+		// Two datasources of the same type, only one allowed: resolution must
+		// succeed instead of complaining about ambiguity.
+		te := NewToolExecutor(grafanaMock.URL, log.DefaultLogger)
+		te.allowedDatasourceUIDs = map[string]bool{"allowed": true}
+
+		uid, err := te.resolveDatasourceUID(context.Background(), "prometheus", "")
+		if err != nil || uid != "allowed" {
+			t.Fatalf("uid=%q err=%v", uid, err)
+		}
+	})
+
+	t.Run("empty list means no restriction", func(t *testing.T) {
+		te := NewToolExecutor(grafanaMock.URL, log.DefaultLogger)
+
+		if _, err := te.resolveDatasourceUID(context.Background(), "prometheus", "forbidden"); err != nil {
+			t.Fatalf("without an allowlist every uid must pass: %v", err)
+		}
+	})
+
+	t.Run("list_datasources hides what is excluded", func(t *testing.T) {
+		te := NewToolExecutor(grafanaMock.URL, log.DefaultLogger)
+		te.allowedDatasourceUIDs = map[string]bool{"allowed": true}
+
+		out, err := te.listDatasources(context.Background())
+		if err != nil {
+			t.Fatalf("listDatasources: %v", err)
+		}
+		if strings.Contains(out, "forbidden") {
+			t.Errorf("an excluded datasource must not be offered to the model: %s", out)
+		}
+		if !strings.Contains(out, "allowed") {
+			t.Errorf("the allowed datasource must stay visible: %s", out)
+		}
+	})
+}
