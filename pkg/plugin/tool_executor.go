@@ -471,16 +471,23 @@ func (te *ToolExecutor) listCorrelations(ctx context.Context) (string, error) {
 		Description string          `json:"description,omitempty"`
 		Target      json.RawMessage `json:"target,omitempty"`
 	}
-	summaries := make([]correlationSummary, len(resp.Correlations))
-	for i, c := range resp.Correlations {
-		summaries[i] = correlationSummary{
+	// Filtered the same way listDatasources is: a correlation naming a
+	// source or target UID outside the allowlist must not be shown either,
+	// or the model learns that excluded datasource's label/description/query
+	// template exists even though it can never query it directly.
+	summaries := make([]correlationSummary, 0, len(resp.Correlations))
+	for _, c := range resp.Correlations {
+		if !te.datasourceAllowed(c.SourceUID) || !te.datasourceAllowed(c.TargetUID) {
+			continue
+		}
+		summaries = append(summaries, correlationSummary{
 			SourceUID:   c.SourceUID,
 			TargetUID:   c.TargetUID,
 			Field:       c.Config.Field,
 			Label:       c.Label,
 			Description: c.Description,
 			Target:      c.Config.Target,
-		}
+		})
 	}
 
 	out, _ := json.Marshal(summaries)

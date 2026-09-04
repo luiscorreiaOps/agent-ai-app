@@ -79,6 +79,12 @@ func (te *ToolExecutor) followCorrelation(ctx context.Context, arguments string)
 	if args.SourceDatasourceUID == "" || args.Field == "" || args.FieldValue == "" {
 		return "", fmt.Errorf("source_datasource_uid, field, and field_value are all required")
 	}
+	// Same allowlist resolveDatasourceUID enforces -- a UID the model got
+	// from a dashboard/panel/prior tool result never passes through
+	// list_datasources' filtered discovery, so it has to be checked here too.
+	if !te.datasourceAllowed(args.SourceDatasourceUID) {
+		return "", fmt.Errorf("datasource %q is not permitted by this plugin's configuration -- call list_datasources to see the ones you may query", args.SourceDatasourceUID)
+	}
 
 	body, err := te.doGrafanaRequest(ctx, http.MethodGet, "/api/datasources/correlations", nil)
 	if err != nil {
@@ -118,6 +124,9 @@ func (te *ToolExecutor) followCorrelation(ctx context.Context, arguments string)
 	}
 
 	match := matches[0]
+	if !te.datasourceAllowed(match.TargetUID) {
+		return "", fmt.Errorf("the target datasource %q for this correlation is not permitted by this plugin's configuration", match.TargetUID)
+	}
 	interpolated, err := interpolateCorrelationTarget(match.Config.Target, args.FieldValue)
 	if err != nil {
 		return "", err

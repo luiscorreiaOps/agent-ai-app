@@ -115,6 +115,39 @@ func TestFollowCorrelation_RequiresAllArgs(t *testing.T) {
 	}
 }
 
+// The datasource allowlist has to hold here too, not just in
+// resolveDatasourceUID -- otherwise an admin restricting datasources would
+// still leak another datasource's correlation label/description/query
+// template (and let the model run a query against its target) through this
+// tool alone.
+func TestFollowCorrelation_RejectsDisallowedSourceUID(t *testing.T) {
+	t.Parallel()
+
+	server := followCorrelationMock(t)
+	defer server.Close()
+
+	te := NewToolExecutor(server.URL, log.DefaultLogger)
+	te.allowedDatasourceUIDs = map[string]bool{"tempo-uid": true} // loki-uid (the source) excluded
+
+	if _, err := te.followCorrelation(context.Background(), `{"source_datasource_uid":"loki-uid","field":"trace_id","field_value":"abc123real"}`); err == nil {
+		t.Error("a source datasource outside the allowlist must be refused")
+	}
+}
+
+func TestFollowCorrelation_RejectsDisallowedTargetUID(t *testing.T) {
+	t.Parallel()
+
+	server := followCorrelationMock(t)
+	defer server.Close()
+
+	te := NewToolExecutor(server.URL, log.DefaultLogger)
+	te.allowedDatasourceUIDs = map[string]bool{"loki-uid": true} // tempo-uid (the target) excluded
+
+	if _, err := te.followCorrelation(context.Background(), `{"source_datasource_uid":"loki-uid","field":"trace_id","field_value":"abc123real"}`); err == nil {
+		t.Error("a target datasource outside the allowlist must be refused")
+	}
+}
+
 func TestInterpolateCorrelationTarget_ReplacesPlaceholder(t *testing.T) {
 	t.Parallel()
 
