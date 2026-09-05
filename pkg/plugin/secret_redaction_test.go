@@ -82,7 +82,7 @@ func TestExecuteToolCalls_RedactsSecretsInToolResults(t *testing.T) {
 		Function: openai.FunctionCall{Name: "list_datasources", Arguments: `{}`},
 	}}
 
-	messages, err := app.executeToolCalls(context.Background(), calls, llmProvider{}, nil, nil)
+	messages, err := app.executeToolCalls(context.Background(), calls, llmProvider{}, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("executeToolCalls failed: %v", err)
 	}
