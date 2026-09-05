@@ -1665,6 +1665,10 @@ func (te *ToolExecutor) resolveDatasourceUID(ctx context.Context, dsType, provid
 }
 
 func (te *ToolExecutor) doGrafanaRequest(ctx context.Context, method, path string, body io.Reader) (string, error) {
+	// The single point every tool goes through to reach the Grafana API, so
+	// the only place to instrument to know what a tool actually did (see
+	// api_call_recorder.go).
+	recordAPICall(ctx, method, path)
 	reqURL := te.grafanaURL + path
 	req, err := http.NewRequestWithContext(ctx, method, reqURL, body)
 	if err != nil {

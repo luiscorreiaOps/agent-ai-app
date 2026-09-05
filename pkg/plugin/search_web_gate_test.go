@@ -293,7 +293,7 @@ func TestExecuteToolCalls_SearchWeb_NotEnabledByAdminAllowlist(t *testing.T) {
 	// refused by the pseudo-tool-call gate without ever calling Execute.
 	a := newSearchWebApp(t, server, []string{"query_prometheus"})
 
-	msgs, err := a.executeToolCalls(context.Background(), []openai.ToolCall{searchWebCall("call_1", false)}, llmProvider{}, nil, nil)
+	msgs, err := a.executeToolCalls(context.Background(), []openai.ToolCall{searchWebCall("call_1", false)}, llmProvider{}, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("executeToolCalls failed: %v", err)
 	}
@@ -318,7 +318,7 @@ func TestExecuteToolCalls_SearchWeb_SecondCallWithoutConfirmationRefused(t *test
 	// two IDs "wins" the race) is not: exactly one network call, exactly one
 	// confirmation-required refusal.
 	calls := []openai.ToolCall{searchWebCall("call_1", false), searchWebCall("call_2", false)}
-	msgs, err := a.executeToolCalls(context.Background(), calls, llmProvider{}, nil, nil)
+	msgs, err := a.executeToolCalls(context.Background(), calls, llmProvider{}, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("executeToolCalls failed: %v", err)
 	}
@@ -419,7 +419,7 @@ func TestExecuteToolCalls_SearchWeb_ConcurrentCallsNeverExceedBudget(t *testing.
 		searchWebCall("call_2", true),
 		searchWebCall("call_3", true),
 	}
-	msgs, err := a.executeToolCalls(context.Background(), calls, llmProvider{}, nil, nil)
+	msgs, err := a.executeToolCalls(context.Background(), calls, llmProvider{}, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("executeToolCalls failed: %v", err)
 	}

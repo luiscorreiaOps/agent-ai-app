@@ -170,6 +170,11 @@ func (a *App) streamChatCompletion(ctx context.Context, req ChatRequest, sender 
 				ToolCall: newToolCallInfo(name, args),
 			})
 		}
+		notifyToolResult := func(name string, apiCalls []string) error {
+			return sendStreamChunk(sender, ChatResponse{
+				ToolResult: &ToolResultInfo{Name: name, APICalls: apiCalls},
+			})
+		}
 		notifyWorkerEvent := func(event WorkerEventInfo) error {
 			return sendStreamChunk(sender, ChatResponse{WorkerEvent: &event})
 		}
@@ -185,7 +190,7 @@ func (a *App) streamChatCompletion(ctx context.Context, req ChatRequest, sender 
 			historyMsg.ToolCalls = sanitizeToolCallArguments(choice.Message.ToolCalls)
 			messages = append(messages, historyMsg)
 
-			toolMessages, err := a.executeToolCalls(ctx, choice.Message.ToolCalls, provider, notifyToolCall, notifyWorkerEvent)
+			toolMessages, err := a.executeToolCalls(ctx, choice.Message.ToolCalls, provider, notifyToolCall, notifyToolResult, notifyWorkerEvent)
 			if err != nil {
 				return err
 			}
@@ -232,7 +237,7 @@ func (a *App) streamChatCompletion(ctx context.Context, req ChatRequest, sender 
 			// "thinking" indicator stays visible through the whole round
 			// instead of showing this narration as if it were progress.
 
-			toolMessages, err := a.executeToolCalls(ctx, pseudoCalls, provider, notifyToolCall, notifyWorkerEvent)
+			toolMessages, err := a.executeToolCalls(ctx, pseudoCalls, provider, notifyToolCall, notifyToolResult, notifyWorkerEvent)
 			if err != nil {
 				return err
 			}

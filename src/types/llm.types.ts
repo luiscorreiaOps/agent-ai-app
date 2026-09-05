@@ -14,6 +14,8 @@ export interface ToolExecution {
     statusLabel?: string;
     doneLabel?: string;
     external?: boolean;
+    /** Grafana API requests this tool actually issued, filled in when the call completes. The only visibility into argument-less tools like list_datasources. */
+    apiCalls?: string[];
 }
 
 /**

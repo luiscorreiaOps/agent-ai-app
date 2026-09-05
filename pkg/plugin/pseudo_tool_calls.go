@@ -253,7 +253,7 @@ func sanitizeToolCallArguments(calls []openai.ToolCall) []openai.ToolCall {
 	return out
 }
 
-func (a *App) executeToolCalls(ctx context.Context, calls []openai.ToolCall, provider llmProvider, notify func(name, args string) error, notifyWorker func(WorkerEventInfo) error) ([]openai.ChatCompletionMessage, error) {
+func (a *App) executeToolCalls(ctx context.Context, calls []openai.ToolCall, provider llmProvider, notify func(name, args string) error, notifyResult func(name string, apiCalls []string) error, notifyWorker func(WorkerEventInfo) error) ([]openai.ChatCompletionMessage, error) {
 	toolMessages := make([]openai.ChatCompletionMessage, len(calls))
 
 	var notifyMu sync.Mutex
@@ -273,6 +273,16 @@ func (a *App) executeToolCalls(ctx context.Context, calls []openai.ToolCall, pro
 	// incremented at the very top of runOne, before safeNotify, so the UI
 	// never announces a search the backend is about to refuse.
 	var onlineSearchCalls int32
+
+	var notifyResultMu sync.Mutex
+	safeNotifyResult := func(name string, apiCalls []string) error {
+		if notifyResult == nil {
+			return nil
+		}
+		notifyResultMu.Lock()
+		defer notifyResultMu.Unlock()
+		return notifyResult(name, apiCalls)
+	}
 
 	var notifyWorkerMu sync.Mutex
 	safeNotifyWorker := func(event WorkerEventInfo) error {
@@ -308,9 +318,17 @@ func (a *App) executeToolCalls(ctx context.Context, calls []openai.ToolCall, pro
 			return openai.ChatCompletionMessage{}, err
 		}
 
-		result, execErr := a.toolExecutor.Execute(ctx, tc.Function.Name, tc.Function.Arguments)
+		// One recorder per call: the tools of a round run in parallel, so a
+		// shared one would mix their requests together.
+		execCtx, recorder := withAPICallRecorder(ctx)
+		result, execErr := a.toolExecutor.Execute(execCtx, tc.Function.Name, tc.Function.Arguments)
 		if execErr != nil {
 			result = fmt.Sprintf("Error: %s", execErr.Error())
+		}
+		// Emitted on failure too: knowing which request failed is worth as
+		// much as knowing which one succeeded.
+		if err := safeNotifyResult(tc.Function.Name, recorder.snapshot()); err != nil {
+			return openai.ChatCompletionMessage{}, err
 		}
 
 		// Structural delimiter (not just a text instruction) around every

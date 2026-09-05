@@ -297,7 +297,7 @@ func TestExecuteToolCalls_DispatchWorkerRunsConcurrently(t *testing.T) {
 	}
 
 	start := time.Now()
-	msgs, err := a.executeToolCalls(context.Background(), calls, provider, nil, nil)
+	msgs, err := a.executeToolCalls(context.Background(), calls, provider, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("executeToolCalls failed: %v", err)
 	}
