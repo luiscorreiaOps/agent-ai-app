@@ -164,15 +164,15 @@ func (a *App) streamChatCompletion(ctx context.Context, req ChatRequest, sender 
 
 		choice := resp.Choices[0]
 
-		notifyToolCall := func(name, args string) error {
+		notifyToolCall := func(id, name, args string) error {
 			return sendStreamChunk(sender, ChatResponse{
 				Content:  "",
-				ToolCall: newToolCallInfo(name, args),
+				ToolCall: newToolCallInfo(id, name, args),
 			})
 		}
-		notifyToolResult := func(name string, apiCalls []string) error {
+		notifyToolResult := func(id, name string, apiCalls []string) error {
 			return sendStreamChunk(sender, ChatResponse{
-				ToolResult: &ToolResultInfo{Name: name, APICalls: apiCalls},
+				ToolResult: &ToolResultInfo{ID: id, Name: name, APICalls: apiCalls},
 			})
 		}
 		notifyWorkerEvent := func(event WorkerEventInfo) error {

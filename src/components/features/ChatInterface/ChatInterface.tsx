@@ -749,6 +749,21 @@ export const ChatInterface = ({ panelContext, onDismiss, sessionRef, responseLan
       assistantRevealVisibleRef.current = '';
     }
 
+    // Real, reproduced bug: this is called once per streamed chunk, which for
+    // token-level LLM streaming can be dozens of calls per second. Once the
+    // interval below is already running, it alone owns pacing the reveal --
+    // the interval's own next tick will pick up the updated target ref above.
+    // Previously every one of those chunk arrivals ALSO advanced+rendered
+    // immediately, stacking on top of the interval's cadence instead of being
+    // paced by it, so real network chunk rate (not RESPONSE_REVEAL_INTERVAL_MS)
+    // decided how often the (expensive: markdown + syntax highlighting) message
+    // re-rendered. A long streamed response could queue far more renders than
+    // the browser could keep up with, locking up the tab well past the point
+    // the backend had already finished responding.
+    if (assistantRevealTimerRef.current) {
+      return;
+    }
+
     if (assistantRevealVisibleRef.current.length < fullContent.length) {
       const remaining = fullContent.slice(assistantRevealVisibleRef.current.length);
       assistantRevealVisibleRef.current = fullContent.slice(
@@ -762,10 +777,6 @@ export const ChatInterface = ({ panelContext, onDismiss, sessionRef, responseLan
       clearAssistantReveal();
       updateVisibleAssistantMessage(fullContent, toolExecutions);
       resolveAssistantReveal();
-      return;
-    }
-
-    if (assistantRevealTimerRef.current) {
       return;
     }
 
@@ -1464,6 +1475,7 @@ export const ChatInterface = ({ panelContext, onDismiss, sessionRef, responseLan
         }
         if (chunk.toolCall) {
           finalToolExecutions.push({
+            id: chunk.toolCall.id,
             name: chunk.toolCall.name,
             arguments: chunk.toolCall.arguments,
             status: 'pending',
@@ -1475,12 +1487,18 @@ export const ChatInterface = ({ panelContext, onDismiss, sessionRef, responseLan
           });
         }
         if (chunk.toolResult) {
-          // Attached to the most recent call of the same name: the backend
-          // emits this right after execution, and concurrent calls in one
-          // round carry distinct names in practice.
+          // Matched by the LLM's own tool_call id (falling back to name for
+          // any older/non-conforming chunk that somehow has no id) -- matching
+          // by name alone breaks when the same tool is called several times
+          // concurrently in one round (e.g. dispatch_worker), since every
+          // entry sharing that name looked identical and this always patched
+          // the last one, silently misattributing results between them.
           const result = chunk.toolResult;
           for (let i = finalToolExecutions.length - 1; i >= 0; i--) {
-            if (finalToolExecutions[i].name === result.name) {
+            const matches = result.id
+              ? finalToolExecutions[i].id === result.id
+              : finalToolExecutions[i].name === result.name;
+            if (matches) {
               finalToolExecutions[i].apiCalls = result.apiCalls;
               break;
             }

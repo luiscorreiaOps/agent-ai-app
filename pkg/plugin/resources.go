@@ -68,6 +68,13 @@ type ChatResponse struct {
 // the generic "Using tools..." block -- driven entirely by the real tool
 // name on the backend, never by LLM-generated text.
 type ToolCallInfo struct {
+	// ID is the LLM's own tool_call id (openai.ToolCall.ID) -- the only
+	// thing that reliably tells apart two concurrent calls to the SAME tool
+	// in one round (e.g. dispatch_worker called 2-3 times in parallel, a
+	// pattern this codebase's own skill pack recommends). Matching a later
+	// ToolResultInfo back to its call by Name alone breaks in exactly that
+	// case: every entry sharing a name would look the same to the frontend.
+	ID        string `json:"id,omitempty"`
 	Name      string `json:"name"`
 	Arguments string `json:"arguments"`
 	// Kind is "grafana_tool" (default) or "internet_search".
@@ -89,8 +96,9 @@ type ToolCallInfo struct {
 // been through this tool's own backend sanitization yet at notify time (see
 // executeToolCalls/OnlineSearchClient.Search), so the frontend must never
 // render it as-is.
-func newToolCallInfo(name string, args string) *ToolCallInfo {
+func newToolCallInfo(id string, name string, args string) *ToolCallInfo {
 	info := &ToolCallInfo{
+		ID:          id,
 		Name:        name,
 		Arguments:   args,
 		Kind:        "grafana_tool",
@@ -113,6 +121,8 @@ func newToolCallInfo(name string, args string) *ToolCallInfo {
 // tool actually did. Separate from ToolCallInfo because that one is emitted
 // before execution starts -- the API calls aren't known yet at that point.
 type ToolResultInfo struct {
+	// ID matches the ToolCallInfo this result belongs to -- see ToolCallInfo.ID.
+	ID   string `json:"id,omitempty"`
 	Name string `json:"name"`
 	// APICalls lists the Grafana API requests this tool issued, e.g.
 	// "GET /api/datasources". Empty for tools that call no Grafana API.

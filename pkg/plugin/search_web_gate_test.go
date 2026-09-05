@@ -190,7 +190,7 @@ func TestExecute_SearchWeb_UnhealthySkipsSearchCall(t *testing.T) {
 
 func TestNewToolCallInfo_SearchWebHidesRawArgumentsAndUsesInternetLabels(t *testing.T) {
 	t.Parallel()
-	info := newToolCallInfo(onlineSearchToolName, `{"query":"real user query","reason":"real reason"}`)
+	info := newToolCallInfo("call_1", onlineSearchToolName, `{"query":"real user query","reason":"real reason"}`)
 	if info.Arguments != "{}" {
 		t.Errorf("Arguments = %q, want {} (raw query must not reach the frontend before sanitization)", info.Arguments)
 	}
@@ -207,7 +207,7 @@ func TestNewToolCallInfo_SearchWebHidesRawArgumentsAndUsesInternetLabels(t *test
 
 func TestNewToolCallInfo_GrafanaToolKeepsArgumentsAndDefaultLabels(t *testing.T) {
 	t.Parallel()
-	info := newToolCallInfo("query_prometheus", `{"query":"up"}`)
+	info := newToolCallInfo("call_2", "query_prometheus", `{"query":"up"}`)
 	if info.Arguments != `{"query":"up"}` {
 		t.Errorf("Arguments = %q, want unchanged", info.Arguments)
 	}

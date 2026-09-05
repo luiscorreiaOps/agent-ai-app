@@ -5,6 +5,8 @@
  * query_loki, list_folders, etc.) -- surfaced by the streaming chat endpoint.
  */
 export interface ToolExecution {
+    /** The LLM's own tool_call id -- see ToolCallInfo.id in context/types.ts for why this is needed to tell apart concurrent calls to the same tool. */
+    id?: string;
     name: string;
     arguments?: string;
     status: 'pending' | 'success' | 'error';
