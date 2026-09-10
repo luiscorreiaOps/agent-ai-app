@@ -86,12 +86,18 @@ type Settings struct {
 	EnableBrainAgentTools              *bool              `json:"enableBrainAgentTools,omitempty"`
 	EnableMemoryPrefetch               *bool              `json:"enableMemoryPrefetch,omitempty"`
 	EnableInternetTools                *bool              `json:"enableInternetTools,omitempty"`
-	OnlineSearchBackend                string             `json:"onlineSearchBackend,omitempty"`
-	SearchGatewayURL                   string             `json:"searchGatewayURL,omitempty"`
-	SearxngURL                         string             `json:"searxngURL,omitempty"`
-	OnlineSearchMaxResults             int                `json:"onlineSearchMaxResults,omitempty"`
-	OnlineSearchTimeoutSeconds         int                `json:"onlineSearchTimeoutSeconds,omitempty"`
-	SearchGatewayToken                 string             `json:"-"`
+	// EnableToolSearch activates the lazy tool-loading mode: instead of exposing
+	// all tools upfront, the LLM receives only a small set of core tools plus the
+	// search_tools meta-tool. Specialized tools are discovered on demand by the
+	// LLM via search_tools, reducing initial context token consumption.
+	// Defaults to false (nil) to preserve the existing all-tools-upfront behavior.
+	EnableToolSearch           *bool  `json:"enableToolSearch,omitempty"`
+	OnlineSearchBackend        string `json:"onlineSearchBackend,omitempty"`
+	SearchGatewayURL           string `json:"searchGatewayURL,omitempty"`
+	SearxngURL                 string `json:"searxngURL,omitempty"`
+	OnlineSearchMaxResults     int    `json:"onlineSearchMaxResults,omitempty"`
+	OnlineSearchTimeoutSeconds int    `json:"onlineSearchTimeoutSeconds,omitempty"`
+	SearchGatewayToken         string `json:"-"`
 	// GrafanaTokenPath is intentionally json:"-" and extracted manually from
 	// raw jsonData, so it can be used without being serialized back out.
 	GrafanaTokenPath string `json:"-"`
