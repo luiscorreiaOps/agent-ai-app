@@ -1296,3 +1296,34 @@ func TestResolveDatasourceUID_Allowlist(t *testing.T) {
 		}
 	})
 }
+
+// listCorrelations must apply the same allowlist as listDatasources -- a
+// correlation naming an excluded datasource as either end would otherwise
+// leak that datasource's label/description/query template to the model even
+// though it can never be queried directly.
+func TestListCorrelations_Allowlist(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"correlations":[
+			{"sourceUID":"allowed","targetUID":"allowed","label":"self","config":{"field":"f","target":{}}},
+			{"sourceUID":"allowed","targetUID":"forbidden","label":"to-forbidden","config":{"field":"f","target":{}}},
+			{"sourceUID":"forbidden","targetUID":"allowed","label":"from-forbidden","config":{"field":"f","target":{}}}
+		]}`))
+	}))
+	defer server.Close()
+
+	te := NewToolExecutor(server.URL, log.DefaultLogger)
+	te.allowedDatasourceUIDs = map[string]bool{"allowed": true}
+
+	out, err := te.listCorrelations(context.Background())
+	if err != nil {
+		t.Fatalf("listCorrelations: %v", err)
+	}
+	if !strings.Contains(out, "self") {
+		t.Errorf("a correlation between two allowed datasources must stay visible: %s", out)
+	}
+	if strings.Contains(out, "to-forbidden") || strings.Contains(out, "from-forbidden") {
+		t.Errorf("a correlation touching an excluded datasource on either end must not be offered to the model: %s", out)
+	}
+}

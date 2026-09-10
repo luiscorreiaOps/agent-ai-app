@@ -29,8 +29,16 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
       - name: Build, package, sign, and attest plugin
         uses: grafana/plugin-actions/build-plugin@main
+        env:
+          npm_config_cache: ${{ runner.temp }}/npm-cache
         with:
           policy_token: ${{ secrets.GRAFANA_ACCESS_POLICY_TOKEN }}
           attestation: true

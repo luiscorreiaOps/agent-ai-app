@@ -88,6 +88,8 @@ export interface AgentInfo {
 export type ToolCallKind = 'grafana_tool' | 'internet_search';
 
 export interface ToolCallInfo {
+  /** The LLM's own tool_call id -- the only reliable way to tell apart two concurrent calls to the SAME tool in one round (e.g. dispatch_worker called several times in parallel). */
+  id?: string;
   name: string;
   arguments: string;
   kind?: ToolCallKind;
@@ -112,6 +114,8 @@ export interface WorkerEventInfo {
 
 /** Sent once a tool call has finished, carrying what it actually did. Separate from ToolCallInfo, which is emitted before execution starts -- the API calls aren't known yet at that point. */
 export interface ToolResultInfo {
+  /** Matches the ToolCallInfo this result belongs to -- see ToolCallInfo.id. */
+  id?: string;
   name: string;
   /** Grafana API requests this tool issued, e.g. "GET /api/datasources". */
   apiCalls?: string[];

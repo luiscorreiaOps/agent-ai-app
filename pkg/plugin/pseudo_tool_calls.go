@@ -253,17 +253,17 @@ func sanitizeToolCallArguments(calls []openai.ToolCall) []openai.ToolCall {
 	return out
 }
 
-func (a *App) executeToolCalls(ctx context.Context, calls []openai.ToolCall, provider llmProvider, notify func(name, args string) error, notifyResult func(name string, apiCalls []string) error, notifyWorker func(WorkerEventInfo) error) ([]openai.ChatCompletionMessage, error) {
+func (a *App) executeToolCalls(ctx context.Context, calls []openai.ToolCall, provider llmProvider, notify func(id, name, args string) error, notifyResult func(id, name string, apiCalls []string) error, notifyWorker func(WorkerEventInfo) error) ([]openai.ChatCompletionMessage, error) {
 	toolMessages := make([]openai.ChatCompletionMessage, len(calls))
 
 	var notifyMu sync.Mutex
-	safeNotify := func(name, args string) error {
+	safeNotify := func(id, name, args string) error {
 		if notify == nil {
 			return nil
 		}
 		notifyMu.Lock()
 		defer notifyMu.Unlock()
-		return notify(name, args)
+		return notify(id, name, args)
 	}
 
 	// onlineSearchCalls counts how many search_web calls this turn has seen
@@ -275,13 +275,13 @@ func (a *App) executeToolCalls(ctx context.Context, calls []openai.ToolCall, pro
 	var onlineSearchCalls int32
 
 	var notifyResultMu sync.Mutex
-	safeNotifyResult := func(name string, apiCalls []string) error {
+	safeNotifyResult := func(id, name string, apiCalls []string) error {
 		if notifyResult == nil {
 			return nil
 		}
 		notifyResultMu.Lock()
 		defer notifyResultMu.Unlock()
-		return notifyResult(name, apiCalls)
+		return notifyResult(id, name, apiCalls)
 	}
 
 	var notifyWorkerMu sync.Mutex
@@ -314,7 +314,7 @@ func (a *App) executeToolCalls(ctx context.Context, calls []openai.ToolCall, pro
 			}
 		}
 
-		if err := safeNotify(tc.Function.Name, tc.Function.Arguments); err != nil {
+		if err := safeNotify(tc.ID, tc.Function.Name, tc.Function.Arguments); err != nil {
 			return openai.ChatCompletionMessage{}, err
 		}
 
@@ -327,7 +327,7 @@ func (a *App) executeToolCalls(ctx context.Context, calls []openai.ToolCall, pro
 		}
 		// Emitted on failure too: knowing which request failed is worth as
 		// much as knowing which one succeeded.
-		if err := safeNotifyResult(tc.Function.Name, recorder.snapshot()); err != nil {
+		if err := safeNotifyResult(tc.ID, tc.Function.Name, recorder.snapshot()); err != nil {
 			return openai.ChatCompletionMessage{}, err
 		}
 

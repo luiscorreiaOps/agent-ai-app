@@ -9,7 +9,7 @@ func TestBuildSystemPrompt_ExplainPanel(t *testing.T) {
 	t.Parallel()
 
 	ctx := json.RawMessage(`{"panel":{"title":"CPU Usage"}}`)
-	prompt := buildSystemPrompt("explain_panel", "generic", ctx, false, nil, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
+	prompt := buildSystemPrompt("explain_panel", "generic", ctx, false, false, nil, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
 
 	if prompt == "" {
 		t.Fatal("expected non-empty prompt")
@@ -28,7 +28,7 @@ func TestBuildSystemPrompt_AnalyzeLogs(t *testing.T) {
 	t.Parallel()
 
 	ctx := json.RawMessage(`{"logs":{"query":"{app=\"test\"}"}}`)
-	prompt := buildSystemPrompt("analyze_logs", "generic", ctx, false, nil, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
+	prompt := buildSystemPrompt("analyze_logs", "generic", ctx, false, false, nil, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
 
 	if !contains(prompt, "log analysis") {
 		t.Error("expected prompt to mention 'log analysis'")
@@ -39,7 +39,7 @@ func TestBuildSystemPrompt_AnalyzeMetrics(t *testing.T) {
 	t.Parallel()
 
 	ctx := json.RawMessage(`{"metrics":{"query":"up"}}`)
-	prompt := buildSystemPrompt("analyze_metrics", "generic", ctx, false, nil, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
+	prompt := buildSystemPrompt("analyze_metrics", "generic", ctx, false, false, nil, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
 
 	if !contains(prompt, "metrics analysis") {
 		t.Error("expected prompt to mention 'metrics analysis'")
@@ -60,7 +60,7 @@ func TestBuildSystemPrompt_FramesContextAsUntrusted(t *testing.T) {
 	for _, mode := range []string{"chat", "explain_panel", "analyze_logs", "analyze_metrics"} {
 		t.Run(mode, func(t *testing.T) {
 			ctx := json.RawMessage(`{"marker":"CANARY_VALUE_12345"}`)
-			prompt := buildSystemPrompt(mode, "generic", ctx, false, nil, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
+			prompt := buildSystemPrompt(mode, "generic", ctx, false, false, nil, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
 
 			if !contains(prompt, "<untrusted_context>") || !contains(prompt, "</untrusted_context>") {
 				t.Errorf("mode %q: expected context to be wrapped in <untrusted_context> markers, got: %s", mode, prompt)
@@ -78,7 +78,7 @@ func TestBuildSystemPrompt_FramesContextAsUntrusted(t *testing.T) {
 func TestBuildSystemPrompt_UnknownMode(t *testing.T) {
 	t.Parallel()
 
-	prompt := buildSystemPrompt("unknown", "generic", nil, false, nil, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
+	prompt := buildSystemPrompt("unknown", "generic", nil, false, false, nil, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
 
 	if prompt == "" {
 		t.Fatal("expected non-empty fallback prompt")
@@ -88,7 +88,7 @@ func TestBuildSystemPrompt_UnknownMode(t *testing.T) {
 func TestBuildSystemPrompt_Chat(t *testing.T) {
 	t.Parallel()
 
-	prompt := buildSystemPrompt("chat", "generic", nil, false, nil, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
+	prompt := buildSystemPrompt("chat", "generic", nil, false, false, nil, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
 
 	if !contains(prompt, "Agent AI") {
 		t.Error("expected chat prompt to mention 'Agent AI'")
@@ -119,7 +119,7 @@ func TestBuildSystemPrompt_Chat_IncludesRemediationPlanGuidance(t *testing.T) {
 	// propose_remediation_plan (from the agent-ai tools roadmap) isn't a
 	// real data-fetching tool -- it's purely about how the final answer is
 	// structured, so it's a system-prompt instruction, not a Go function.
-	prompt := buildSystemPrompt("chat", "generic", nil, false, nil, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
+	prompt := buildSystemPrompt("chat", "generic", nil, false, false, nil, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
 	if !contains(prompt, "remediation plan") {
 		t.Error("expected chat prompt to include remediation-plan formatting guidance")
 	}
@@ -136,7 +136,7 @@ func TestBuildSystemPrompt_Chat_IncludesRemediationPlanGuidance(t *testing.T) {
 func TestBuildSystemPrompt_Chat_IncludesToolFailureGracefulDegradationGuidance(t *testing.T) {
 	t.Parallel()
 
-	prompt := buildSystemPrompt("chat", "generic", nil, false, nil, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
+	prompt := buildSystemPrompt("chat", "generic", nil, false, false, nil, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
 	if !contains(prompt, "is never a complete reply on its own") {
 		t.Error("expected chat prompt to forbid 'tool failed' as a standalone answer")
 	}
@@ -149,7 +149,7 @@ func TestBuildSystemPrompt_ChatWithContext(t *testing.T) {
 	t.Parallel()
 
 	ctx := json.RawMessage(`{"autoDiscovery":true,"datasources":[{"name":"Prometheus","type":"prometheus","uid":"prom-1"}]}`)
-	prompt := buildSystemPrompt("chat", "generic", ctx, false, nil, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
+	prompt := buildSystemPrompt("chat", "generic", ctx, false, false, nil, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
 
 	if !contains(prompt, "Agent AI") {
 		t.Error("expected chat prompt base text")
@@ -163,8 +163,8 @@ func TestBuildSystemPrompt_AgentSpecialization(t *testing.T) {
 	t.Parallel()
 
 	contexts := map[string]string{"agent-1": "Focus on Kubernetes cluster health and node capacity."}
-	generic := buildSystemPrompt("chat", "generic", nil, false, contexts, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
-	specialist := buildSystemPrompt("chat", "agent-1", nil, false, contexts, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
+	generic := buildSystemPrompt("chat", "generic", nil, false, false, contexts, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
+	specialist := buildSystemPrompt("chat", "agent-1", nil, false, false, contexts, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
 
 	if !contains(specialist, "node capacity") {
 		t.Error("expected specialist agent prompt to include its user-defined context")
@@ -179,7 +179,7 @@ func TestBuildSystemPrompt_AgentSpecialization(t *testing.T) {
 	// Unknown agent IDs must not break prompt building -- resolveAgent (used
 	// by the request handlers) falls back to "generic" before this is called,
 	// but buildSystemPrompt itself should also degrade gracefully.
-	unknown := buildSystemPrompt("chat", "not-a-real-agent", nil, false, contexts, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
+	unknown := buildSystemPrompt("chat", "not-a-real-agent", nil, false, false, contexts, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
 	if unknown == "" {
 		t.Fatal("expected non-empty prompt for unknown agent")
 	}
@@ -208,18 +208,23 @@ func TestMaxResponseTokensForMode(t *testing.T) {
 	cases := []struct {
 		mode       string
 		configured int
+		lightMode  bool
 		want       int
 	}{
-		{"explain_panel", 4096, explainPanelMaxTokens},
-		{"explain_panel", 0, explainPanelMaxTokens},
-		{"explain_panel", 500, 500}, // configured lower than the cap stays as configured
-		{"chat", 4096, 4096},
-		{"analyze_logs", 4096, 4096},
+		{"explain_panel", 4096, false, explainPanelMaxTokens},
+		{"explain_panel", 0, false, explainPanelMaxTokens},
+		{"explain_panel", 500, false, 500}, // configured lower than the cap stays as configured
+		{"chat", 4096, false, 4096},
+		{"analyze_logs", 4096, false, 4096},
+		{"chat", 4096, true, lightModeMaxTokens},
+		{"chat", 0, true, lightModeMaxTokens},
+		{"chat", 400, true, 400},                          // configured lower than light mode's own cap stays as configured
+		{"explain_panel", 4096, true, lightModeMaxTokens}, // light mode wins over explain_panel's own (larger) cap
 	}
 	for _, c := range cases {
-		got := maxResponseTokensForMode(c.mode, c.configured)
+		got := maxResponseTokensForMode(c.mode, c.configured, c.lightMode)
 		if got != c.want {
-			t.Errorf("maxResponseTokensForMode(%q, %d) = %d, want %d", c.mode, c.configured, got, c.want)
+			t.Errorf("maxResponseTokensForMode(%q, %d, lightMode=%v) = %d, want %d", c.mode, c.configured, c.lightMode, got, c.want)
 		}
 	}
 }

@@ -15,9 +15,9 @@ concurrency:
 
 jobs:
   test:
-    name: Lint, Typecheck, Test, Build
+    name: Grafana review validation
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -35,43 +35,8 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install frontend dependencies
-        run: npm ci
-
-      - name: Go format
-        run: |
-          unformatted=$(gofmt -l .)
-          if [ -n "$unformatted" ]; then
-            echo "::error::Files not properly formatted:"
-            echo "$unformatted"
-            exit 1
-          fi
-
-      - name: Go lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: latest
-
-      - name: Go vet
-        run: go vet ./pkg/...
-
-      - name: Go test
-        run: go test -v -race -count=1 ./pkg/...
-
-      - name: Frontend lint
-        run: npm run lint
-
-      - name: Frontend typecheck
-        run: npm run typecheck
-
-      - name: Frontend test
-        run: npm run test:ci
-
-      - name: Build frontend
-        run: npm run build
-
-      - name: Build backend
-        run: go build -buildvcs=false ./...
+      - name: Run Grafana-style plugin review validation
+        run: npm run validate:review
 
   docker:
     name: Build and Push Docker

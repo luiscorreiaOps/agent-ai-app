@@ -141,7 +141,7 @@ func TestExecuteToolCalls_NotifyErrorPropagates(t *testing.T) {
 	}
 	wantErr := errors.New("stream closed")
 
-	_, err := a.executeToolCalls(context.Background(), calls, llmProvider{}, func(name, args string) error { return wantErr }, nil, nil)
+	_, err := a.executeToolCalls(context.Background(), calls, llmProvider{}, func(id, name, args string) error { return wantErr }, nil, nil)
 	if !errors.Is(err, wantErr) {
 		t.Errorf("err = %v, want %v", err, wantErr)
 	}

@@ -34,6 +34,10 @@ fetchLimits()
   .then((limits) => { cachedLimits = limits; })
   .catch(() => {});
 
+// See the DashboardPanelMenu addLink's onClick below for why this exists.
+const PANEL_PREVIEW_REOPEN_COOLDOWN_MS = 2000;
+let lastPanelPreviewOpenedAt = 0;
+
 function DisabledNotice({ feature }: { feature: string }) {
   return (
     <div style={{ padding: '16px' }}>
@@ -179,6 +183,24 @@ export const plugin = new AppPlugin<{}>()
     icon: 'ai-sparkle',
     configure: () => (cachedLimits.enableDashboardIntegration ? {} : undefined),
     onClick: (_event, helpers) => {
+      // Real, live-reproduced bug: closing this modal and reopening it
+      // (same panel or a different one) faster than ~2s repeatedly froze
+      // the tab for 10+ seconds -- confirmed via backend logs that only
+      // ONE real chat request actually reached the server each time (so
+      // it isn't overlapping network requests, see ChatInterface.tsx's own
+      // panelPreviewRequestInFlight guard for that separate issue); the
+      // freeze happens purely from mounting/unmounting ChatInterface's own
+      // React tree (30+ effects, per-render emotion CSS generation) faster
+      // than the browser can settle between cycles. No natural, deliberate
+      // use of this menu item is anywhere near this fast -- opening the
+      // panel menu, then Extensions, then this item already takes a couple
+      // of real seconds -- so a hard minimum gap between opens is a safe,
+      // unintrusive guard against the specific pattern that triggers it.
+      const now = Date.now();
+      if (now - lastPanelPreviewOpenedAt < PANEL_PREVIEW_REOPEN_COOLDOWN_MS) {
+        return;
+      }
+      lastPanelPreviewOpenedAt = now;
       const panelContext = helpers.context;
       helpers.openModal({
         title: '✨ Agent AI',
