@@ -67,7 +67,7 @@ func (a *App) integrationsStatus(ctx context.Context) []IntegrationStatus {
 	brainAgentEnabled := a.settings.EnableBrainAgentTools != nil && *a.settings.EnableBrainAgentTools
 	if status, detail := brainAgentStatus(ctx, grafanaURL, token); status != IntegrationStatusAbsent {
 		result = append(result, IntegrationStatus{
-			ID:      "brain-agent",
+			ID:      "shortbobcat2735-brainagent-app",
 			Name:    "Brain Agent",
 			Status:  status,
 			Enabled: brainAgentEnabled,

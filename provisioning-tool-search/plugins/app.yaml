@@ -1,0 +1,64 @@
+apiVersion: 1
+
+apps:
+  # Agent AI app with Tool Search (lazy loading) enabled.
+  # Port 3001 instance – mirrors 3000's config but adds enableToolSearch:true.
+  # The plugin settings below replicate the values from the 3000 instance
+  # (confirmed via GET /api/plugins/shortbobcat2735-agentai-app/settings)
+  # and activate the new feature so it can be validated independently.
+  - type: shortbobcat2735-agentai-app
+    org_id: 1
+    disabled: false
+    jsonData:
+      # LLM provider – same endpoint as 3000
+      endpointURL: "https://generativelanguage.googleapis.com/v1beta/openai/"
+      model: "gemini-3.6-flash"
+      timeoutSeconds: 60
+      maxTokens: 4096
+
+      # Feature flags – same as 3000
+      enableStandaloneChat: true
+      enableDashboardIntegration: true
+      enableLLMAppIntegration: true
+      enableBrainAgentTools: false
+      enableInternetTools: true
+      lightModeForDefaultAgent: true
+
+      # Tool Search feature – ENABLED on this instance for validation
+      enableToolSearch: true
+
+      # Rate / concurrency – same as 3000
+      chatRateLimitPerMinute: 10
+      maxConcurrentChats: 25
+      chatQueueWaitSeconds: 30
+      chatQueueDepth: 50
+      rateLimitMaxRetries: 3
+
+      # Online search – same as 3000
+      onlineSearchBackend: "duckduckgo"
+      onlineSearchMaxResults: 5
+      onlineSearchTimeoutSeconds: 6
+      searchGatewayURL: ""
+      searxngURL: ""
+
+      # Other
+      attachmentMaxBytes: 51200
+      auditLogFullContent: false
+      maintenanceMode: false
+      responseLanguage: "english"
+      restrictSpecialistAgentsForViewers: false
+      customGuardrails: ""
+      allowedDatasourceUIDs: []
+      fallbackProviders:
+        - endpointURL: ""
+          model: ""
+        - endpointURL: ""
+          model: ""
+
+    # NOTE: secureJsonData (apiKey, grafanaToken) must be set manually after
+    # container start via Grafana UI or the Admin API, as secrets cannot be
+    # committed to provisioning files. Use the same key configured on 3000.
+    # Quick setup command (replace <GRAFANA_USER>, <GRAFANA_PASS> and <API_KEY>):
+    #   curl -X PUT -u <GRAFANA_USER>:<GRAFANA_PASS> http://localhost:3001/api/plugins/shortbobcat2735-agentai-app/settings \
+    #        -H 'Content-Type: application/json' \
+    #        -d '{"secureJsonData":{"apiKey":"<API_KEY>"}}'

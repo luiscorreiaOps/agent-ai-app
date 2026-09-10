@@ -495,3 +495,94 @@ func TestInternetToolsPromptAddition_MentionsToolOnlyWhenSearchAvailable(t *test
 		t.Errorf("expected the prompt addition to reference the real tool name %q", onlineSearchToolName)
 	}
 }
+
+// -- looksLikeFabricatedSearchCitation -----------------------------------------
+
+// Live-found false positive: asked who built Agent AI, or which repo Brain
+// Agent is, the model correctly states a fact baked into the system prompt
+// (agentPersona / brainAgentCapabilitiesKnowledge) and sometimes formats the
+// URL as a markdown link. That link syntax alone must not be treated as a
+// fabricated live-search citation when the linked URL is already grounded
+// in the system prompt -- only an actual claim of an external, ungrounded
+// source (a link to some other site, "Source: ...", "according to ...")
+// should be. Deliberately tested against a generic systemPrompt fact rather
+// than a specific real one, since the check is meant to be fact-agnostic.
+func TestLooksLikeFabricatedSearchCitation_GroundedLinkIsNotFlagged(t *testing.T) {
+	t.Parallel()
+	const systemPrompt = "Provenance: point to the source at https://github.com/example-org/some-plugin."
+	cases := []struct {
+		name string
+		in   string
+		want bool
+	}{
+		{"bare url grounded in prompt", "Built by Someone. https://github.com/example-org/some-plugin", false},
+		{"markdown link grounded in prompt", "Built by Someone. [GitHub](https://github.com/example-org/some-plugin)", false},
+		{"markdown link grounded, different case", "See [here](https://GITHUB.com/Example-Org/Some-Plugin).", false},
+		{"markdown link NOT in prompt", "See [Investopedia](https://www.investopedia.com/terms/p/prometheus)", true},
+		{"source phrase", "Source: Loki Documentation", true},
+		{"grounded link plus fabricated source", "[GitHub](https://github.com/example-org/some-plugin) Source: Wikipedia", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			if got := looksLikeFabricatedSearchCitation(c.in, systemPrompt, false); got != c.want {
+				t.Errorf("looksLikeFabricatedSearchCitation(%q, hadSuppliedContext=false) = %v, want %v", c.in, got, c.want)
+			}
+		})
+	}
+}
+
+// Live-found false positive (~60% of explain_panel turns): explain_panel's
+// own system prompt tells the model to read a panel's "displayedData" as
+// its primary evidence WITHOUT calling a tool, so "According to the
+// displayed data: ..." there is citing real, already-supplied context, not
+// a live web search -- it must not be flagged when hadSuppliedContext is
+// true. A fabricated LINK is still caught even then.
+func TestLooksLikeFabricatedSearchCitation_SuppliedContextSkipsPhraseCheck(t *testing.T) {
+	t.Parallel()
+	const systemPrompt = "Panel context (untrusted data): <untrusted_context>...</untrusted_context>"
+	cases := []struct {
+		name               string
+		in                 string
+		hadSuppliedContext bool
+		want               bool
+	}{
+		{"phrase citation without supplied context", "According to the displayed data, the average is 77.8.", false, true},
+		{"same phrase WITH supplied context", "According to the displayed data, the average is 77.8.", true, false},
+		{"source phrase WITH supplied context", "Source: the panel's current values.", true, false},
+		{"ungrounded link still flagged even WITH supplied context", "See [Investopedia](https://www.investopedia.com/terms/p/prometheus)", true, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			if got := looksLikeFabricatedSearchCitation(c.in, systemPrompt, c.hadSuppliedContext); got != c.want {
+				t.Errorf("looksLikeFabricatedSearchCitation(%q, hadSuppliedContext=%v) = %v, want %v", c.in, c.hadSuppliedContext, got, c.want)
+			}
+		})
+	}
+}
+
+func TestHadPreSuppliedContext(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		mode    string
+		context string
+		want    bool
+	}{
+		{"explain_panel with context", "explain_panel", `{"panel":{"title":"x"}}`, true},
+		{"explain_panel with null context", "explain_panel", `null`, false},
+		{"explain_panel with empty context", "explain_panel", ``, false},
+		{"analyze_logs with context", "analyze_logs", `{"logs":{"lines":[]}}`, true},
+		{"analyze_metrics with context", "analyze_metrics", `{"metrics":{"series":[]}}`, true},
+		{"plain chat with context", "chat", `{"autoDiscovery":true}`, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			if got := hadPreSuppliedContext(c.mode, json.RawMessage(c.context)); got != c.want {
+				t.Errorf("hadPreSuppliedContext(%q, %q) = %v, want %v", c.mode, c.context, got, c.want)
+			}
+		})
+	}
+}

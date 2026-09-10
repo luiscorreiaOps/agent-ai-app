@@ -19,7 +19,7 @@ import (
 // mcpToolsPath is where brain-agent (a standalone Memory/RAG plugin, not
 // grafana-llm-app) exposes its JSON-RPC MCP endpoint -- see its own
 // pkg/plugin/resources.go's handleMCPDirect.
-const mcpToolsPath = "/api/plugins/brain-agent/resources/mcp"
+const mcpToolsPath = "/api/plugins/shortbobcat2735-brainagent-app/resources/mcp"
 
 // inTransitStatusPath is brain-agent's own status endpoint for its
 // "RPC Bus" toggle (see its handleStatusEncryption) -- the authoritative
@@ -27,7 +27,7 @@ const mcpToolsPath = "/api/plugins/brain-agent/resources/mcp"
 // a sentinel file both plugins used to read off the shared pod filesystem
 // (security-audit finding M3: that file didn't survive a pod restart and
 // wasn't safe with more than one replica).
-const inTransitStatusPath = "/api/plugins/brain-agent/resources/encryption_in_transit/status"
+const inTransitStatusPath = "/api/plugins/shortbobcat2735-brainagent-app/resources/encryption_in_transit/status"
 
 // inTransitStatusCacheTTL bounds how often this client re-checks
 // brain-agent's toggle -- same reasoning as mcpToolsCacheTTL: it changes

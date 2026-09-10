@@ -5,12 +5,9 @@ apps:
     org_id: 1
     disabled: false
     jsonData:
-      endpointURL: "http://172.17.0.1:8000/v1"
-      model: "mock-model"
+
       enableBrainAgentTools: true
-    secureJsonData:
-      apiKey: "dummy-key"
-      grafanaToken: "REPLACE_ME_WITH_YOUR_GRAFANA_SERVICE_ACCOUNT_TOKEN"
-  - type: brain-agent
+
+  - type: shortbobcat2735-brainagent-app
     org_id: 1
     disabled: false

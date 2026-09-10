@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+	openai "github.com/sashabaranov/go-openai"
 )
 
 // ToolExecutor executes tool calls by querying Grafana datasources.
@@ -49,6 +50,12 @@ type ToolExecutor struct {
 	// must handle that case, never assume it's set.
 	mcp *MCPClient
 
+	// allowedDatasourceUIDs mirrors Settings.AllowedDatasourceUIDs. Empty
+	// means unrestricted. Enforced in resolveDatasourceUID -- the single
+	// point every datasource-bound tool goes through -- and applied to
+	// discovery so the model is never shown a datasource it cannot use.
+	allowedDatasourceUIDs map[string]bool
+
 	// internetToolsEnabled mirrors Settings.EnableInternetTools at
 	// construction time -- defense in depth, independent of onlineSearch
 	// being non-nil: even if a client existed from a bug, partial reload, or
@@ -59,6 +66,14 @@ type ToolExecutor struct {
 	// admin Search Gateway), wired in app.go only when internetToolsEnabled
 	// is true. nil when internet tools are off or misconfigured.
 	onlineSearch *OnlineSearchClient
+
+	// searchPool is the full tool pool used by the search_tools meta-tool
+	// when EnableToolSearch is active. It is set by allTools() each turn
+	// (via setSearchPool) so search_tools always searches the same pool
+	// that was computed for this turn (respecting agent / allowlists /
+	// internet-tools state). Nil when tool-search mode is off.
+	searchPool   []openai.Tool
+	searchPoolMu sync.RWMutex
 }
 
 // NewToolExecutor creates a new tool executor.
@@ -71,9 +86,40 @@ func NewToolExecutor(grafanaURL string, logger log.Logger) *ToolExecutor {
 	}
 }
 
+// setSearchPool stores the full tool pool available for search_tools queries.
+// Called by allTools() each turn when EnableToolSearch is active, so the pool
+// always reflects the tools actually available for this agent/turn.
+func (te *ToolExecutor) setSearchPool(pool []openai.Tool) {
+	te.searchPoolMu.Lock()
+	defer te.searchPoolMu.Unlock()
+	te.searchPool = make([]openai.Tool, len(pool))
+	copy(te.searchPool, pool)
+}
+
+// getSearchPool returns a snapshot of the current search pool under the read lock.
+func (te *ToolExecutor) getSearchPool() []openai.Tool {
+	te.searchPoolMu.RLock()
+	defer te.searchPoolMu.RUnlock()
+	if te.searchPool == nil {
+		return nil
+	}
+	snap := make([]openai.Tool, len(te.searchPool))
+	copy(snap, te.searchPool)
+	return snap
+}
+
 // Execute runs a tool call and returns the result as a string.
 func (te *ToolExecutor) Execute(ctx context.Context, name string, arguments string) (string, error) {
 	switch name {
+	case toolSearchToolName:
+		// search_tools is handled here so it can access the live pool stored by
+		// setSearchPool(). Falls back to the full llmTools set if no pool is set
+		// (e.g. when called outside the lazy-loading path), so it is always safe.
+		pool := te.getSearchPool()
+		if pool == nil {
+			pool = llmTools("agent-1") // full set, includes dispatch_worker
+		}
+		return searchTools(arguments, pool)
 	case "query_prometheus":
 		return te.queryPrometheus(ctx, arguments)
 	case "query_loki":
@@ -411,9 +457,14 @@ func (te *ToolExecutor) listDatasources(ctx context.Context) (string, error) {
 		Type string `json:"type"`
 		UID  string `json:"uid"`
 	}
-	summaries := make([]dsSummary, len(datasources))
-	for i, ds := range datasources {
-		summaries[i] = dsSummary{Name: ds.Name, Type: ds.Type, UID: ds.UID}
+	// Filtered at the source: the model must never be shown a datasource it
+	// cannot query, or it will propose it and fail on the next call.
+	summaries := make([]dsSummary, 0, len(datasources))
+	for _, ds := range datasources {
+		if !te.datasourceAllowed(ds.UID) {
+			continue
+		}
+		summaries = append(summaries, dsSummary{Name: ds.Name, Type: ds.Type, UID: ds.UID})
 	}
 
 	out, _ := json.Marshal(summaries)
@@ -460,16 +511,23 @@ func (te *ToolExecutor) listCorrelations(ctx context.Context) (string, error) {
 		Description string          `json:"description,omitempty"`
 		Target      json.RawMessage `json:"target,omitempty"`
 	}
-	summaries := make([]correlationSummary, len(resp.Correlations))
-	for i, c := range resp.Correlations {
-		summaries[i] = correlationSummary{
+	// Filtered the same way listDatasources is: a correlation naming a
+	// source or target UID outside the allowlist must not be shown either,
+	// or the model learns that excluded datasource's label/description/query
+	// template exists even though it can never query it directly.
+	summaries := make([]correlationSummary, 0, len(resp.Correlations))
+	for _, c := range resp.Correlations {
+		if !te.datasourceAllowed(c.SourceUID) || !te.datasourceAllowed(c.TargetUID) {
+			continue
+		}
+		summaries = append(summaries, correlationSummary{
 			SourceUID:   c.SourceUID,
 			TargetUID:   c.TargetUID,
 			Field:       c.Config.Field,
 			Label:       c.Label,
 			Description: c.Description,
 			Target:      c.Config.Target,
-		}
+		})
 	}
 
 	out, _ := json.Marshal(summaries)
@@ -1527,7 +1585,7 @@ func (te *ToolExecutor) brainAgentInstallState(ctx context.Context) (brainAgentI
 	if te.grafanaURL == "" {
 		return brainAgentStateUnknown, ""
 	}
-	body, err := te.doGrafanaRequest(ctx, http.MethodGet, "/api/plugins/brain-agent/settings", nil)
+	body, err := te.doGrafanaRequest(ctx, http.MethodGet, "/api/plugins/shortbobcat2735-brainagent-app/settings", nil)
 	if err != nil {
 		switch {
 		case strings.Contains(err.Error(), "status 404"):
@@ -1605,17 +1663,47 @@ func (te *ToolExecutor) datasourceUIDsByType(ctx context.Context, dsType string)
 // silently pick "the first Prometheus it happens to see"; the error message
 // itself names the candidates so the caller can retry immediately, without
 // a round trip through list_datasources first.
+// datasourceAllowed reports whether a UID may be queried. An empty allowlist
+// means unrestricted -- the default, and what every existing install gets.
+func (te *ToolExecutor) datasourceAllowed(uid string) bool {
+	if len(te.allowedDatasourceUIDs) == 0 {
+		return true
+	}
+	return te.allowedDatasourceUIDs[uid]
+}
+
+// allowedUIDs filters a UID list down to what the admin permits.
+func (te *ToolExecutor) allowedUIDs(uids []string) []string {
+	if len(te.allowedDatasourceUIDs) == 0 {
+		return uids
+	}
+	out := make([]string, 0, len(uids))
+	for _, uid := range uids {
+		if te.allowedDatasourceUIDs[uid] {
+			out = append(out, uid)
+		}
+	}
+	return out
+}
+
 func (te *ToolExecutor) resolveDatasourceUID(ctx context.Context, dsType, providedUID string) (string, error) {
 	if providedUID != "" {
+		// A UID chosen by the model is still checked: it may have seen one
+		// in a dashboard, an alert rule, or the panel context, none of which
+		// go through the filtered discovery path.
+		if !te.datasourceAllowed(providedUID) {
+			return "", fmt.Errorf("datasource %q is not permitted by this plugin's configuration -- call list_datasources to see the ones you may query", providedUID)
+		}
 		return providedUID, nil
 	}
 	uids, err := te.datasourceUIDsByType(ctx, dsType)
 	if err != nil {
 		return "", err
 	}
+	uids = te.allowedUIDs(uids)
 	switch len(uids) {
 	case 0:
-		return "", fmt.Errorf("no datasource of type %q found", dsType)
+		return "", fmt.Errorf("no permitted datasource of type %q found", dsType)
 	case 1:
 		return uids[0], nil
 	default:

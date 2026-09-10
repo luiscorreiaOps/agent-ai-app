@@ -117,7 +117,7 @@ const PROVIDER_EXAMPLES: ProviderExample[] = [
   {
     name: 'Google Gemini',
     endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-    model: 'gemini-2.0-flash',
+    model: 'gemini-3.6-flash',
     tagline: 'High token limit and multi-tool support',
     note: 'Tool-calling and multi-step rounds work perfectly. Generous free tier limits.',
   },
@@ -170,6 +170,14 @@ interface JsonData {
   timeoutSeconds?: number;
   maxTokens?: number;
   rateLimitMaxRetries?: number;
+  /** Per-user chat requests allowed per minute (token bucket, burst = this value). See pkg/plugin/app.go's getLimiter. */
+  chatRateLimitPerMinute?: number;
+  /** How many chat requests may run at once across every user. */
+  maxConcurrentChats?: number;
+  /** How long a request waits for a free slot before being refused. 0 restores fail-fast. */
+  chatQueueWaitSeconds?: number;
+  /** How many requests may be waiting for a slot at once. */
+  chatQueueDepth?: number;
   attachmentMaxBytes?: number;
   enableStandaloneChat?: boolean;
   enableDashboardIntegration?: boolean;
@@ -178,6 +186,10 @@ interface JsonData {
   customGuardrails?: string;
   /** Default reply language when the user's message doesn't explicitly request a different one -- 'english' (default), 'portuguese', or 'spanish'. See pkg/plugin/guardrails.go's languageDirective. */
   responseLanguage?: string;
+  /** Internal URL the plugin backend uses to reach the Grafana API. Defaults to http://localhost:3000, which is wrong on any install listening elsewhere -- see pkg/plugin/settings.go. */
+  grafanaURL?: string;
+  /** Restricts every tool call to these datasource UIDs. Empty = unrestricted. Enforced in the backend (resolveDatasourceUID), never in the prompt -- see pkg/plugin/tool_executor.go. */
+  allowedDatasourceUIDs?: string[];
   fallbackProviders?: FallbackProviderJsonData[];
   auditLogFullContent?: boolean;
   /** Whether this plugin may automatically use grafana-llm-app (if installed and configured) as an LLM provider -- see pkg/plugin/llmapp.go. */
@@ -215,6 +227,13 @@ const MAX_FALLBACK_PROVIDERS = 2;
 const MAX_TIMEOUT_SECONDS = 300;
 const MAX_MAX_TOKENS = 32768;
 const MAX_RATE_LIMIT_RETRIES = 20;
+// Mirrors the ceilings the backend already clamps to (see pkg/plugin/
+// settings.go) -- the UI shouldn't let an admin type a value that is then
+// silently lowered on save.
+const MAX_CHAT_RATE_LIMIT_PER_MINUTE = 120;
+const MAX_CONCURRENT_CHATS = 500;
+const MAX_CHAT_QUEUE_WAIT_SECONDS = 300;
+const MAX_CHAT_QUEUE_DEPTH = 2000;
 const MAX_ATTACHMENT_MAX_KB = 2048; // 2 MB
 
 interface FallbackProviderState {
@@ -246,6 +265,10 @@ export function AppConfig({ plugin }: Props) {
     timeoutSeconds: jsonData.timeoutSeconds || 60,
     maxTokens: jsonData.maxTokens || 4096,
     rateLimitMaxRetries: jsonData.rateLimitMaxRetries ?? 3,
+    chatRateLimitPerMinute: jsonData.chatRateLimitPerMinute ?? 10,
+    maxConcurrentChats: jsonData.maxConcurrentChats ?? 25,
+    chatQueueWaitSeconds: jsonData.chatQueueWaitSeconds ?? 30,
+    chatQueueDepth: jsonData.chatQueueDepth ?? 50,
     // Stored/sent as bytes; edited here in KB, which is the natural unit for
     // sizing a text/config/log snippet or a small screenshot.
     attachmentMaxKB: Math.round((jsonData.attachmentMaxBytes || 51200) / 1024),
@@ -254,6 +277,10 @@ export function AppConfig({ plugin }: Props) {
     maintenanceMode: jsonData.maintenanceMode ?? false,
     customGuardrails: jsonData.customGuardrails || '',
     responseLanguage: jsonData.responseLanguage || 'english',
+    grafanaURL: jsonData.grafanaURL || '',
+    // Edited as a comma-separated list: a rarely touched admin field, not
+    // worth a picker that would have to load and track every datasource.
+    allowedDatasourceUIDs: (jsonData.allowedDatasourceUIDs || []).join(', '),
     auditLogFullContent: jsonData.auditLogFullContent ?? false,
     restrictSpecialistAgentsForViewers: jsonData.restrictSpecialistAgentsForViewers ?? false,
     enableLLMAppIntegration: jsonData.enableLLMAppIntegration ?? true,
@@ -354,6 +381,14 @@ export function AppConfig({ plugin }: Props) {
     setState({ ...state, customGuardrails: event.target.value.slice(0, MAX_CUSTOM_GUARDRAILS_CHARS) });
   };
 
+  const onChangeGrafanaURL = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setState({ ...state, grafanaURL: event.target.value });
+  };
+
+  const onChangeAllowedDatasourceUIDs = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setState({ ...state, allowedDatasourceUIDs: event.target.value });
+  };
+
   const onChangeResponseLanguage = (value: string) => {
     setState({ ...state, responseLanguage: value });
   };
@@ -429,12 +464,23 @@ export function AppConfig({ plugin }: Props) {
           timeoutSeconds: state.timeoutSeconds,
           maxTokens: state.maxTokens,
           rateLimitMaxRetries: state.rateLimitMaxRetries,
+          chatRateLimitPerMinute: state.chatRateLimitPerMinute,
+          maxConcurrentChats: state.maxConcurrentChats,
+          chatQueueWaitSeconds: state.chatQueueWaitSeconds,
+          chatQueueDepth: state.chatQueueDepth,
           attachmentMaxBytes: state.attachmentMaxKB * 1024,
           enableStandaloneChat: state.enableStandaloneChat,
           enableDashboardIntegration: state.enableDashboardIntegration,
           maintenanceMode: state.maintenanceMode,
           customGuardrails: state.customGuardrails,
           responseLanguage: state.responseLanguage,
+          // Sent trimmed and only when set, so an empty field keeps the
+          // backend's own default rather than storing a blank string.
+          ...(state.grafanaURL.trim() ? { grafanaURL: state.grafanaURL.trim() } : {}),
+          allowedDatasourceUIDs: state.allowedDatasourceUIDs
+            .split(',')
+            .map((uid) => uid.trim())
+            .filter(Boolean),
           fallbackProviders: state.fallbackProviders.map((fp) => ({ endpointURL: fp.endpointURL, model: fp.model })),
           auditLogFullContent: state.auditLogFullContent,
           restrictSpecialistAgentsForViewers: state.restrictSpecialistAgentsForViewers,
@@ -713,6 +759,19 @@ export function AppConfig({ plugin }: Props) {
         {showGrafanaIntegrations && (
           <>
             <Field
+              label="Grafana URL"
+              description="Where this plugin's backend reaches the Grafana API. Leave empty for http://localhost:3000, which is right for a default install. Set it when Grafana listens on another port or address (http_port/http_addr), serves HTTPS, or runs in a container the plugin resolves by another name. This is the internal address the backend connects to, not the public root_url your users see."
+            >
+              <Input
+                aria-label="Grafana URL"
+                value={state.grafanaURL}
+                onChange={onChangeGrafanaURL}
+                placeholder="http://localhost:3000"
+                width={40}
+              />
+            </Field>
+
+            <Field
               label="Grafana Service Account Token"
               description={
                 <>
@@ -836,9 +895,21 @@ export function AppConfig({ plugin }: Props) {
                   { label: 'Português', value: 'portuguese' },
                   { label: 'Español', value: 'spanish' },
                   { label: '中文', value: 'chinese' },
+                  { label: 'Français', value: 'french' },
                 ]}
                 value={state.responseLanguage}
                 onChange={onChangeResponseLanguage}
+              />
+            </Field>
+
+            <Field
+              label="Allowed datasource UIDs"
+              description="Comma-separated datasource UIDs the assistant may query. Empty = unrestricted (default). Enforced server-side on every call -- others stay hidden and are refused."
+            >
+              <Input
+                value={state.allowedDatasourceUIDs}
+                onChange={onChangeAllowedDatasourceUIDs}
+                placeholder="e.g. prometheus-prod, loki-prod"
               />
             </Field>
 
@@ -994,6 +1065,66 @@ export function AppConfig({ plugin }: Props) {
 
         {showSecurityLimits && (
           <>
+            <Field
+              label="Chat requests per minute (per user)"
+              description={`Rate limit applied to each Grafana user separately, keyed on their authenticated identity -- the same one the audit log records. A token bucket, so someone can send this many in a row and then one every 60/N seconds: a normal conversation never notices it, a script does. Range: 1-${MAX_CHAT_RATE_LIMIT_PER_MINUTE}.`}
+            >
+              <Input
+                aria-label="Chat requests per minute"
+                type="number"
+                min={1}
+                max={MAX_CHAT_RATE_LIMIT_PER_MINUTE}
+                value={state.chatRateLimitPerMinute}
+                onChange={onChangeNumber('chatRateLimitPerMinute', MAX_CHAT_RATE_LIMIT_PER_MINUTE)}
+                width={20}
+              />
+            </Field>
+
+            <Field
+              label="Max concurrent chats"
+              description={`How many chat requests may run at once across every user -- bounds the load on the LLM backend regardless of how many people are within their own per-user limit. Range: 1-${MAX_CONCURRENT_CHATS}.`}
+            >
+              <Input
+                aria-label="Max concurrent chats"
+                type="number"
+                min={1}
+                max={MAX_CONCURRENT_CHATS}
+                value={state.maxConcurrentChats}
+                onChange={onChangeNumber('maxConcurrentChats', MAX_CONCURRENT_CHATS)}
+                width={20}
+              />
+            </Field>
+
+            <Field
+              label="Queue wait (seconds)"
+              description={`When no slot is free, how long a request waits for one before being refused. A short wait turns "the backend is momentarily busy" into a real answer instead of an error the caller must retry. Set 0 to refuse immediately. Range: 0-${MAX_CHAT_QUEUE_WAIT_SECONDS}.`}
+            >
+              <Input
+                aria-label="Queue wait seconds"
+                type="number"
+                min={0}
+                max={MAX_CHAT_QUEUE_WAIT_SECONDS}
+                value={state.chatQueueWaitSeconds}
+                onChange={onChangeNumber('chatQueueWaitSeconds', MAX_CHAT_QUEUE_WAIT_SECONDS)}
+                width={20}
+              />
+            </Field>
+
+            <Field
+              label="Queue depth"
+              description={`How many requests may be waiting for a slot at once, independently of the wait above -- past this, an overwhelmed instance fails immediately rather than growing an unbounded backlog. Range: 0-${MAX_CHAT_QUEUE_DEPTH}.`}
+            >
+              <Input
+                aria-label="Queue depth"
+                type="number"
+                min={0}
+                max={MAX_CHAT_QUEUE_DEPTH}
+                value={state.chatQueueDepth}
+                onChange={onChangeNumber('chatQueueDepth', MAX_CHAT_QUEUE_DEPTH)}
+                width={20}
+              />
+            </Field>
+
             <Field
               label="Additional guardrails"
               description={`Extra rules appended on top of the assistant's built-in guardrails (never a replacement -- the built-in rules always apply). Use this for org-specific restrictions, e.g. "Never suggest deleting a dashboard" or "Never discuss customer names". ${state.customGuardrails.length}/${MAX_CUSTOM_GUARDRAILS_CHARS} characters.`}

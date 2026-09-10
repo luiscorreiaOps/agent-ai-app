@@ -11,7 +11,13 @@ import (
 // hand-integrated set below plus (when brain-agent is detected and enabled)
 // its memory tools -- store_memory, search_memory, delete_memory,
 // brain_diagnostics, search_memory_by_time, condense_memory. See mcp.go.
+//
+// When EnableToolSearch is active, only a small core set of tools plus the
+// search_tools meta-tool are returned upfront; the LLM calls search_tools to
+// discover and activate specialized tools on demand, reducing context usage.
 func (a *App) allTools(ctx context.Context, agent string) []openai.Tool {
+	// Build the full pool first, irrespective of tool-search mode, so that
+	// search_tools has access to all tools when the LLM calls it later.
 	tools := llmTools(agent)
 	if a.toolExecutor != nil && a.toolExecutor.mcp != nil {
 		tools = append(tools, a.toolExecutor.mcp.Tools(ctx)...)
@@ -35,7 +41,33 @@ func (a *App) allTools(ctx context.Context, agent string) []openai.Tool {
 	if agent == "generic" && a.settings.LightModeForDefaultAgent {
 		tools = filterEnabledTools(tools, []string{"list_dashboards", "get_dashboard", "list_folders", "list_alerts", "dispatch_worker"})
 	}
-	return filterEnabledTools(tools, a.settings.EnabledTools)
+	tools = filterEnabledTools(tools, a.settings.EnabledTools)
+
+	// Tool-search lazy-loading: expose only core tools + search_tools upfront.
+	// The full pool is stored in the ToolExecutor so search_tools can search it.
+	if a.settings.EnableToolSearch != nil && *a.settings.EnableToolSearch {
+		if a.toolExecutor != nil {
+			a.toolExecutor.setSearchPool(tools)
+		}
+		coreTools := filterEnabledTools(tools, toolSearchCoreTools)
+		return append([]openai.Tool{searchToolDef()}, coreTools...)
+	}
+	return tools
+}
+
+// toolSearchCoreTools is the minimal set of tools always visible to the LLM
+// when EnableToolSearch is active. These cover the most common, low-cost
+// discovery operations (dashboards, alerts, datasources) and the worker
+// dispatcher, so the LLM can still act for simple queries without having
+// to call search_tools first.
+var toolSearchCoreTools = []string{
+	"list_datasources",
+	"list_dashboards",
+	"find_dashboards",
+	"list_alerts",
+	"list_folders",
+	"get_dashboard",
+	"dispatch_worker",
 }
 
 // filterEnabledTools restricts tools to only those named in enabled, when

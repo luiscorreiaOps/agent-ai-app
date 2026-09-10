@@ -39,7 +39,7 @@ func TestBrainAgentInstallState_DisabledWhenSettingsReportEnabledFalse(t *testin
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/plugins/brain-agent/settings" {
+		if r.URL.Path != "/api/plugins/shortbobcat2735-brainagent-app/settings" {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
@@ -58,7 +58,7 @@ func TestBrainAgentInstallState_EnabledWhenSettingsReportEnabledTrue(t *testing.
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/plugins/brain-agent/settings" {
+		if r.URL.Path != "/api/plugins/shortbobcat2735-brainagent-app/settings" {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
@@ -77,7 +77,7 @@ func TestBrainAgentInstallState_ReturnsRealVersionWhenEnabledOrDisabled(t *testi
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/plugins/brain-agent/settings" {
+		if r.URL.Path != "/api/plugins/shortbobcat2735-brainagent-app/settings" {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
@@ -182,7 +182,7 @@ func TestBuildSystemPrompt_IncludesBrainAgentCapabilitiesKnowledgeUnconditionall
 	// factual knowledge about Brain Agent's own UI/settings should be
 	// present regardless of brainAgentState -- it's independent of whether
 	// THIS assistant's own integration with it is turned on.
-	prompt := buildSystemPrompt("chat", "generic", nil, false, nil, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
+	prompt := buildSystemPrompt("chat", "generic", nil, false, false, nil, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
 	if !strings.Contains(prompt, "Semantic Search") {
 		t.Errorf("system prompt missing Brain Agent capabilities knowledge")
 	}
@@ -292,7 +292,7 @@ func TestToolExecutor_Execute_MCPTransportFailureReturnsHonestMessageNotRawError
 	// installed with enabled=false.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/api/plugins/brain-agent/settings":
+		case "/api/plugins/shortbobcat2735-brainagent-app/settings":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"enabled":false}`))
 		default:

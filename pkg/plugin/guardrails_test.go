@@ -42,7 +42,7 @@ func TestLanguageDirective_NamesTheConfiguredLanguage(t *testing.T) {
 func TestBuildSystemPrompt_HonorsConfiguredLanguage(t *testing.T) {
 	t.Parallel()
 
-	pt := buildSystemPrompt("chat", "generic", nil, false, nil, nil, 3, "", "portuguese", false, "", "", brainAgentStateUnknown, "")
+	pt := buildSystemPrompt("chat", "generic", nil, false, false, nil, nil, 3, "", "portuguese", false, "", "", brainAgentStateUnknown, "")
 	if !strings.Contains(pt, "Portuguese") {
 		t.Error("expected the chat-mode prompt to instruct the model to answer in Portuguese")
 	}
@@ -50,12 +50,12 @@ func TestBuildSystemPrompt_HonorsConfiguredLanguage(t *testing.T) {
 		t.Error("expected the English-specific directive text to be replaced, not just appended alongside it")
 	}
 
-	es := buildSystemPrompt("chat", "generic", nil, false, nil, nil, 3, "", "spanish", false, "", "", brainAgentStateUnknown, "")
+	es := buildSystemPrompt("chat", "generic", nil, false, false, nil, nil, 3, "", "spanish", false, "", "", brainAgentStateUnknown, "")
 	if !strings.Contains(es, "Spanish") {
 		t.Error("expected the chat-mode prompt to instruct the model to answer in Spanish")
 	}
 
-	def := buildSystemPrompt("chat", "generic", nil, false, nil, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
+	def := buildSystemPrompt("chat", "generic", nil, false, false, nil, nil, 3, "", "", false, "", "", brainAgentStateUnknown, "")
 	if !strings.Contains(def, "English") {
 		t.Error("expected an unset language setting to default to English, matching pre-existing behavior")
 	}
@@ -64,7 +64,7 @@ func TestBuildSystemPrompt_HonorsConfiguredLanguage(t *testing.T) {
 func TestBuildSystemPrompt_DisableGuardrailsForDebugSkipsGuardrailsOnly(t *testing.T) {
 	t.Parallel()
 
-	withGuardrails := buildSystemPrompt("chat", "generic", nil, false, nil, nil, 3, "custom rule XYZ", "", false, "", "", brainAgentStateUnknown, "")
+	withGuardrails := buildSystemPrompt("chat", "generic", nil, false, false, nil, nil, 3, "custom rule XYZ", "", false, "", "", brainAgentStateUnknown, "")
 	if !strings.Contains(withGuardrails, "custom rule XYZ") {
 		t.Fatal("sanity check failed: custom guardrails should appear when not disabled")
 	}
@@ -72,7 +72,7 @@ func TestBuildSystemPrompt_DisableGuardrailsForDebugSkipsGuardrailsOnly(t *testi
 		t.Fatal("sanity check failed: built-in guardrails should appear when not disabled")
 	}
 
-	debugPrompt := buildSystemPrompt("chat", "generic", nil, false, nil, nil, 3, "custom rule XYZ", "", true, "", "", brainAgentStateUnknown, "")
+	debugPrompt := buildSystemPrompt("chat", "generic", nil, false, false, nil, nil, 3, "custom rule XYZ", "", true, "", "", brainAgentStateUnknown, "")
 	if strings.Contains(debugPrompt, "custom rule XYZ") {
 		t.Error("expected custom guardrails to be skipped when DisableGuardrailsForDebug is true")
 	}

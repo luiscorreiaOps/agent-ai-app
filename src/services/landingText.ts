@@ -1,9 +1,9 @@
 // Static UI chrome for the chat landing screen (greeting, subtitle, default
-// quick prompts) in the 3 languages the "Default reply language" setting
+// quick prompts) in every language the "Default reply language" setting
 // supports. This is separate from the LLM's own reply language (which the
 // backend system prompt already handles per-request) -- these strings never
 // go through the model, so they need their own translation, not a prompt.
-export type ResponseLanguage = 'english' | 'portuguese' | 'spanish' | 'chinese';
+export type ResponseLanguage = 'english' | 'portuguese' | 'spanish' | 'chinese' | 'french';
 
 interface QuickPromptText {
     title: string;
@@ -83,6 +83,26 @@ const LANDING_TEXT: Record<ResponseLanguage, LandingText> = {
             },
         },
     },
+    french: {
+        greetingMorning: 'Bonjour',
+        greetingAfternoon: 'Bon après-midi',
+        greetingEvening: 'Bonsoir',
+        subtitle: 'Bienvenue sur Agent AI ! Comment puis-je vous aider aujourd’hui ?',
+        quickPrompts: {
+            introduction: {
+                title: 'Premiers pas',
+                content: 'Je débute ici. Liste les dossiers et tableaux de bord de premier niveau de cette instance Grafana, puis suggère une bonne première question à poser.',
+            },
+            incidents: {
+                title: 'Incidents',
+                content: 'Y a-t-il des alertes actives en ce moment ? Si oui, résume-les.',
+            },
+            information: {
+                title: 'Informations',
+                content: 'Liste les sources de données disponibles sur cette instance Grafana.',
+            },
+        },
+    },
     spanish: {
         greetingMorning: 'Buenos días',
         greetingAfternoon: 'Buenas tardes',
@@ -106,7 +126,9 @@ const LANDING_TEXT: Record<ResponseLanguage, LandingText> = {
 };
 
 export function normalizeResponseLanguage(value: unknown): ResponseLanguage {
-    return value === 'portuguese' || value === 'spanish' || value === 'chinese' ? value : 'english';
+    return value === 'portuguese' || value === 'spanish' || value === 'chinese' || value === 'french'
+        ? value
+        : 'english';
 }
 
 export function getLandingText(language: ResponseLanguage): LandingText {

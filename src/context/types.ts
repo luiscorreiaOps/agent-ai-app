@@ -12,6 +12,11 @@ export interface PanelContext {
   queries?: string[];
   fields?: string[];
   data?: unknown[][];
+  /** The values the panel has ALREADY loaded, downsampled and pre-formatted
+   * by summarizePanelData (services/panelData.ts). Sent so the model reads
+   * what is on screen instead of re-running the panel's own query through a
+   * tool call. */
+  displayedData?: string;
   thresholds?: Array<{ value: number; color: string }>;
   timeRange?: TimeRange;
 }

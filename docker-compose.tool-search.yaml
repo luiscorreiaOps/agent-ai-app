@@ -1,13 +1,12 @@
 services:
-  grafana:
+  grafana-tool-search:
     image: grafana/grafana:12.3.1
-    container_name: shortbobcat2735-agentai-app-dev
+    container_name: shortbobcat2735-agentai-app-tool-search
     ports:
-      - "3000:3000"
+      - "3001:3000"
     volumes:
-      - ./:/var/lib/grafana/plugins/shortbobcat2735-agentai-app:Z
-      - ../brain-agent:/var/lib/grafana/plugins/brain-agent:Z
-      - ./provisioning:/etc/grafana/provisioning:Z
+      - ./dist:/var/lib/grafana/plugins/shortbobcat2735-agentai-app:Z
+      - ./provisioning-tool-search:/etc/grafana/provisioning:Z
     environment:
       - GF_DEFAULT_APP_MODE=development
       - GF_LOG_LEVEL=debug
