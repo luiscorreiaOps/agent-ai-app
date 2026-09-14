@@ -206,7 +206,7 @@ func TestChatCompletion_IncludesPrefetchedMemoryInSystemPrompt(t *testing.T) {
 
 	a := &App{
 		settings:  Settings{MaxTokens: 100},
-		providers: []llmProvider{newLLMProvider(llmServer.URL, "key", "test-model", 10)},
+		providers: []llmProvider{newLLMProvider(llmServer.URL, "key", "test-model", "", 10)},
 		logger:    log.DefaultLogger,
 		toolExecutor: &ToolExecutor{
 			mcp: newMCPClient(mcpServer.URL, func() string { return "token" }, log.DefaultLogger),

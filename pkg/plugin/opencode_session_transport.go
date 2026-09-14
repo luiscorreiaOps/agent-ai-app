@@ -36,12 +36,18 @@ func opencodeSessionID() string {
 // opencodeSessionTransport injects the OpenCode Go session header (and a
 // self-identifying User-Agent, as the Go docs ask clients to do) on
 // requests to opencode.ai only. Inert for every other provider.
+//
+// openCodeConfigured enables injection for ANY host: it is set when the
+// admin picked the 'opencode' provider kind in Configuration, covering
+// proxied/custom OpenCode deployments behind a different hostname. Host
+// detection (opencode.ai) still applies as a zero-config fallback.
 type opencodeSessionTransport struct {
-	base http.RoundTripper
+	base               http.RoundTripper
+	openCodeConfigured bool
 }
 
 func (t *opencodeSessionTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.URL.Host == "opencode.ai" {
+	if req.URL.Host == "opencode.ai" || t.openCodeConfigured {
 		if req.Header.Get("x-opencode-session") == "" {
 			req.Header.Set("x-opencode-session", opencodeSessionID())
 		}

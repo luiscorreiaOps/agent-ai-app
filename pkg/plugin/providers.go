@@ -22,9 +22,15 @@ type llmProvider struct {
 	streamClient *openai.Client
 }
 
-func newLLMProvider(endpointURL, apiKey, model string, timeoutSeconds int) llmProvider {
+func newLLMProvider(endpointURL, apiKey, model string, provider string, timeoutSeconds int) llmProvider {
 	config := openai.DefaultConfig(apiKey)
 	config.BaseURL = strings.TrimSuffix(endpointURL, "/")
+
+	// provider is the settings.Provider kind ('openai'/'opencode'). Empty
+	// means "host detection only" -- used by fallback slots (documented as
+	// plain OpenAI-compatible pairs) and the grafana-llm-app integration,
+	// which are never OpenCode endpoints.
+	openCodeConfigured := provider == "opencode"
 
 	// Both clients share the same Retry-After-capturing transport (see
 	// retry_after.go) -- it's a passive observer keyed off the request's own
@@ -33,13 +39,13 @@ func newLLMProvider(endpointURL, apiKey, model string, timeoutSeconds int) llmPr
 	requestConfig := config
 	requestConfig.HTTPClient = &http.Client{
 		Timeout:   time.Duration(timeoutSeconds) * time.Second,
-		Transport: &opencodeSessionTransport{base: &retryAfterTransport{base: &geminiThoughtRewriteTransport{base: &reasoningKeyRewriteTransport{base: http.DefaultTransport}}}},
+		Transport: &opencodeSessionTransport{base: &retryAfterTransport{base: &geminiThoughtRewriteTransport{base: &reasoningKeyRewriteTransport{base: http.DefaultTransport}}}, openCodeConfigured: openCodeConfigured},
 	}
 
 	streamConfig := config
 	streamConfig.HTTPClient = &http.Client{
 		Timeout:   streamHTTPTimeout,
-		Transport: &opencodeSessionTransport{base: &retryAfterTransport{base: &geminiThoughtRewriteTransport{base: &reasoningKeyRewriteTransport{base: http.DefaultTransport}}}},
+		Transport: &opencodeSessionTransport{base: &retryAfterTransport{base: &geminiThoughtRewriteTransport{base: &reasoningKeyRewriteTransport{base: http.DefaultTransport}}}, openCodeConfigured: openCodeConfigured},
 	}
 
 	return llmProvider{
@@ -68,7 +74,7 @@ func newLLMProvider(endpointURL, apiKey, model string, timeoutSeconds int) llmPr
 func buildProviders(ctx context.Context, settings Settings, grafanaURL string) []llmProvider {
 	var providers []llmProvider
 	if settings.EndpointURL != "" && settings.Model != "" {
-		providers = append(providers, newLLMProvider(settings.EndpointURL, settings.APIKey, settings.Model, settings.TimeoutSeconds))
+		providers = append(providers, newLLMProvider(settings.EndpointURL, settings.APIKey, settings.Model, settings.Provider, settings.TimeoutSeconds))
 	}
 	for i, fp := range settings.FallbackProviders {
 		if fp.EndpointURL == "" || fp.Model == "" {
@@ -78,7 +84,7 @@ func buildProviders(ctx context.Context, settings Settings, grafanaURL string) [
 		if i < len(settings.FallbackAPIKeys) {
 			key = settings.FallbackAPIKeys[i]
 		}
-		providers = append(providers, newLLMProvider(fp.EndpointURL, key, fp.Model, settings.TimeoutSeconds))
+		providers = append(providers, newLLMProvider(fp.EndpointURL, key, fp.Model, "", settings.TimeoutSeconds))
 	}
 
 	// grafana-llm-app, when installed and actually configured with a

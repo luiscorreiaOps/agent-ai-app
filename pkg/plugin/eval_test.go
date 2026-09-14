@@ -96,7 +96,7 @@ func TestGoldenSet_ToolSelection(t *testing.T) {
 		apiKey = "unused"
 	}
 
-	provider := newLLMProvider(endpoint, apiKey, model, 60)
+	provider := newLLMProvider(endpoint, apiKey, model, "", 60)
 	systemPrompt := buildSystemPrompt("chat", "generic", nil, false, false, nil, nil, 3, "", "", false, "Admin", "", brainAgentStateUnknown, "")
 	tools := llmTools("generic")
 
@@ -142,7 +142,7 @@ func TestGoldenSet_DispatchWorkerToolSelectionForSpecialist(t *testing.T) {
 		apiKey = "unused"
 	}
 
-	provider := newLLMProvider(endpoint, apiKey, model, 60)
+	provider := newLLMProvider(endpoint, apiKey, model, "", 60)
 	contexts := map[string]string{"agent-1": "You specialize in SRE investigations that correlate service health across alerts, metrics, logs, and traces."}
 	systemPrompt := buildSystemPrompt("chat", "agent-1", nil, false, false, contexts, nil, 3, "", "", false, "Admin", "", brainAgentStateUnknown, "")
 	tools := llmTools("agent-1")

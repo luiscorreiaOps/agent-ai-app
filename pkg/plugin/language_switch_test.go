@@ -284,7 +284,7 @@ func TestChatCompletion_CorrectsFabricatedMemorySuccessWhenNoToolWasCalled(t *te
 	defer grafanaServer.Close()
 
 	enabled := true
-	provider := newLLMProvider(llmServer.URL, "test-key", "test-model", 30)
+	provider := newLLMProvider(llmServer.URL, "test-key", "test-model", "", 30)
 	app := &App{
 		settings: Settings{
 			MaxTokens:             1000,
@@ -331,7 +331,7 @@ func TestChatCompletion_CorrectsFabricatedMemorySuccessWhenIntegrationOff(t *tes
 	defer grafanaServer.Close()
 
 	disabled := false
-	provider := newLLMProvider(llmServer.URL, "test-key", "test-model", 30)
+	provider := newLLMProvider(llmServer.URL, "test-key", "test-model", "", 30)
 	app := &App{
 		settings: Settings{
 			MaxTokens:             1000,
@@ -469,7 +469,7 @@ func TestRetryForLanguageSwitch_ReturnsRetryContentOnSuccess(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := newLLMProvider(server.URL, "test-key", "test-model", 30)
+	provider := newLLMProvider(server.URL, "test-key", "test-model", "", 30)
 	app := &App{settings: Settings{}, logger: log.DefaultLogger}
 
 	buildReq := func(p llmProvider) openai.ChatCompletionRequest {
@@ -499,7 +499,7 @@ func TestRetryForLanguageSwitch_FailureReturnsNotOK(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := newLLMProvider(server.URL, "test-key", "test-model", 30)
+	provider := newLLMProvider(server.URL, "test-key", "test-model", "", 30)
 	app := &App{settings: Settings{}, logger: log.DefaultLogger}
 	buildReq := func(p llmProvider) openai.ChatCompletionRequest {
 		return openai.ChatCompletionRequest{Model: p.model, Messages: []openai.ChatCompletionMessage{{Role: "user", Content: "hi"}}}
@@ -533,7 +533,7 @@ func TestRetryForLanguageSwitch_ExhaustsAttemptsWhenStillMismatchedEveryTime(t *
 	}))
 	defer server.Close()
 
-	provider := newLLMProvider(server.URL, "test-key", "test-model", 30)
+	provider := newLLMProvider(server.URL, "test-key", "test-model", "", 30)
 	app := &App{settings: Settings{}, logger: log.DefaultLogger}
 	buildReq := func(p llmProvider) openai.ChatCompletionRequest {
 		return openai.ChatCompletionRequest{Model: p.model, Messages: []openai.ChatCompletionMessage{{Role: "user", Content: prompt}}}
@@ -587,7 +587,7 @@ func TestChatCompletion_RetriesOnceWhenLanguageSwitchDetected(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := newLLMProvider(server.URL, "test-key", "test-model", 30)
+	provider := newLLMProvider(server.URL, "test-key", "test-model", "", 30)
 	app := &App{
 		settings:  Settings{MaxTokens: 1000},
 		providers: []llmProvider{provider},
@@ -744,7 +744,7 @@ func TestChatCompletion_DropsMismatchedReasoningEvenWhenContentIsClean(t *testin
 	}))
 	defer server.Close()
 
-	provider := newLLMProvider(server.URL, "test-key", "test-model", 30)
+	provider := newLLMProvider(server.URL, "test-key", "test-model", "", 30)
 	app := &App{
 		settings:  Settings{MaxTokens: 1000},
 		providers: []llmProvider{provider},
@@ -783,7 +783,7 @@ func TestChatCompletion_RetriesOnFabricatedToolNarration(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider := newLLMProvider(server.URL, "test-key", "test-model", 30)
+	provider := newLLMProvider(server.URL, "test-key", "test-model", "", 30)
 	app := &App{
 		settings:  Settings{MaxTokens: 1000},
 		providers: []llmProvider{provider},
