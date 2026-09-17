@@ -23,13 +23,14 @@ import { GrafanaTheme2, AppEvents, type PluginExtensionPanelContext, type DateTi
 // (agent-ai-app resources/chat), which owns tool-calling, the LLM
 // endpoint, and the system prompt server-side. No MCP client, no
 // grafana-llm-app dependency, no frontend-side orchestrator.
-import { streamChat, fetchAgents, fetchLimits, type ChatHistory } from '../../../api/client';
+import { streamChat, fetchAgents, fetchLimits, logConversationExport, type ChatHistory } from '../../../api/client';
 import { PLUGIN_ID } from '../../../constants';
 import type { AnalysisContext, AgentInfo, WorkerEventInfo } from '../../../context';
 import { summarizePanelData } from '../../../services/panelData';
 import type { Message, ToolExecution } from '../../../types/llm.types';
 import { contextService, DataSourceContext, DashboardContext } from '../../../services/context';
 import { chatHistoryService, type ChatSession } from '../../../services/chatHistory';
+import { downloadSessionAsMarkdown } from '../../../services/chatExport';
 import { getQuickPrompts, saveQuickPrompt, type QuickPrompt } from '../../../services/quickPrompts';
 import { getLandingText, type ResponseLanguage } from '../../../services/landingText';
 import { truncateMessages } from '../../../services/truncation';
@@ -1275,6 +1276,43 @@ export const ChatInterface = ({ panelContext, onDismiss, sessionRef, responseLan
 
 
 
+  // Taking a conversation off-platform is worth a record: the exchange
+  // itself is already audited server-side (auditLogChat), but a formatted
+  // copy on someone's disk is the point where the content stops being
+  // governed by the plugin. The report is metadata only and never gates the
+  // download -- the file is handed to the browser first, then the event is
+  // reported, so a backend that is down costs a log line, not the export.
+  const exportSession = (session: ChatSession) => {
+    downloadSessionAsMarkdown(session);
+    // Nothing derived from what the user wrote goes into this call -- not
+    // even the title, which is the first 60 characters of their opening
+    // message. The record answers "who took a conversation off-platform,
+    // and when", which is the visibility that was missing; reading it back
+    // is what the chat audit log is already for.
+    logConversationExport({
+      sessionId: session.id,
+      format: 'md',
+      messageCount: session.messages.length,
+    }).catch(() => undefined);
+  };
+
+  // Downloads what is on screen, saved or not. A conversation is only
+  // persisted once a turn completes, so reading it back from history would
+  // miss the exchange the user is looking at -- which is usually the one
+  // they want to keep.
+  const handleDownloadConversation = () => {
+    const saved = currentSessionId ? chatHistoryService.getSession(currentSessionId) : undefined;
+    exportSession({
+      id: saved?.id ?? 'current',
+      title: saved?.title ?? (messages.find((m) => m.role === 'user')?.content.slice(0, 60) || 'Conversation'),
+      messages,
+      createdAt: saved?.createdAt ?? Date.now(),
+      updatedAt: Date.now(),
+      agent: saved?.agent ?? selectedAgent,
+      agentLabel: saved?.agentLabel ?? activeAgentLabel,
+    });
+  };
+
   const handleStop = () => {
     resetAssistantReveal();
     if (abortControllerRef.current) {
@@ -2132,6 +2170,18 @@ export const ChatInterface = ({ panelContext, onDismiss, sessionRef, responseLan
                   {!contextUsage.pending && selectedAgent !== 'generic' && ` (${contextUsage.tokens}/${contextUsage.maxTokens})`}
                 </div>
               )}
+              {messages.length > 0 && (
+                <button
+                  type="button"
+                  className={styles.historyButtonDiscreetInline}
+                  title="Download this conversation (Markdown)"
+                  aria-label="Download this conversation"
+                  onClick={handleDownloadConversation}
+                  data-testid="download-conversation-button"
+                >
+                  <Icon name="download-alt" size="lg" />
+                </button>
+              )}
               <button
                 type="button"
                 className={styles.historyButtonDiscreetInline}
@@ -2618,6 +2668,12 @@ export const ChatInterface = ({ panelContext, onDismiss, sessionRef, responseLan
                     {new Date(session.updatedAt).toLocaleString()}
                   </div>
                 </div>
+                <Icon
+                  name="download-alt"
+                  className={styles.historyItemDownload}
+                  title="Download as Markdown"
+                  onClick={() => exportSession(session)}
+                />
                 <Icon
                   name="trash-alt"
                   className={styles.historyItemDelete}

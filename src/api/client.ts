@@ -30,6 +30,30 @@ export async function testConnection(): Promise<{ status: string; message: strin
   return getBackendSrv().get(`${RESOURCE_BASE}/health`, undefined, undefined, { showErrorAlert: false });
 }
 
+export interface ExportAuditEvent {
+  sessionId: string;
+  format: 'md' | 'json';
+  messageCount: number;
+}
+
+// Reports that a conversation was downloaded, so the event lands in the same
+// backend audit log as the chat exchanges themselves. Metadata only -- the
+// file is built in the browser from what is already on screen, and no message
+// text goes over this call.
+//
+// Deliberately never rejects and never blocks the download: the file has
+// already been handed to the browser by the time this runs, so a failed
+// report must not surface as an error toast on a download that plainly
+// worked. A lost report shows up as a missing log line, which is the
+// backend's problem to notice, not the user's.
+export async function logConversationExport(event: ExportAuditEvent): Promise<void> {
+  try {
+    await getBackendSrv().post(`${RESOURCE_BASE}/export`, event, { showErrorAlert: false });
+  } catch {
+    // Intentionally swallowed -- see above.
+  }
+}
+
 export async function fetchAgents(): Promise<AgentInfo[]> {
   return getBackendSrv().get(`${RESOURCE_BASE}/agents`);
 }

@@ -53,6 +53,7 @@ jest.mock('../../../api/client', () => ({
     responseLanguage: 'english',
   }),
   testConnection: jest.fn().mockResolvedValue({ status: 'OK', message: 'ok' }),
+  logConversationExport: jest.fn().mockResolvedValue(undefined),
   // One content chunk then done -- enough for handleSend's loop to reach
   // its post-completion save step without needing a real backend.
   streamChat: jest.fn(async function* () {
@@ -123,7 +124,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { ChatInterface } from './ChatInterface';
 import { chatHistoryService } from '../../../services/chatHistory';
 import { contextService } from '../../../services/context';
-import { streamChat, fetchLimits } from '../../../api/client';
+import { streamChat, fetchLimits, logConversationExport } from '../../../api/client';
 import type { PluginExtensionPanelContext } from '@grafana/data';
 
 // Real PluginExtensionPanelContext shape needed by ChatInterface's
@@ -459,5 +460,69 @@ describe('ChatInterface -- dispatch_worker live activity chips', () => {
 
     await waitFor(() => expect(screen.getByText('a second reply')).toBeInTheDocument());
     expect(screen.queryByTestId('worker-activity-chip')).not.toBeInTheDocument();
+  });
+});
+
+// The reviewer's ask on the export PR: exchanging a conversation is audited
+// server-side, but downloading a formatted copy of it -- tool calls included
+// -- left no trace anywhere, even though that is where the content stops
+// being governed by the plugin. The download reports itself now; these tests
+// pin down that it reports metadata only, and that a failed report can never
+// cost the user their file.
+describe('ChatInterface -- a download reports itself for audit', () => {
+  const streamChatMock = streamChat as unknown as jest.Mock;
+  const logExportMock = logConversationExport as unknown as jest.Mock;
+
+  beforeEach(() => {
+    localStorage.clear();
+    streamChatMock.mockClear();
+    logExportMock.mockClear();
+    Object.defineProperty(URL, 'createObjectURL', { value: jest.fn(() => 'blob:fake'), writable: true });
+    Object.defineProperty(URL, 'revokeObjectURL', { value: jest.fn(), writable: true });
+  });
+
+  const sendOneMessage = async () => {
+    render(<ChatInterface />);
+    const input = () => screen.getByTestId('chat-input');
+    await waitFor(() => expect((input() as HTMLTextAreaElement).disabled).toBe(false));
+    await act(async () => {
+      fireEvent.change(input(), { target: { value: 'why is checkout slow?' } });
+      fireEvent.keyDown(input(), { key: 'Enter', code: 'Enter' });
+    });
+    await waitFor(() => expect(screen.getByTestId('download-conversation-button')).toBeInTheDocument());
+  };
+
+  it('reports the download as metadata, never the conversation itself', async () => {
+    await sendOneMessage();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('download-conversation-button'));
+    });
+
+    await waitFor(() => expect(logExportMock).toHaveBeenCalledTimes(1));
+    const event = logExportMock.mock.calls[0][0];
+    expect(event.format).toBe('md');
+    expect(typeof event.sessionId).toBe('string');
+    expect(event.messageCount).toBeGreaterThan(0);
+    // Whatever else this event grows, it must never carry message text: the
+    // point of the route is to record that an export happened, not to copy
+    // the conversation into the logs a second time. This is what caught the
+    // title -- it reads like metadata, but it is the first 60 characters of
+    // the user's opening message.
+    expect(JSON.stringify(event)).not.toContain('why is checkout slow?');
+    expect(Object.keys(event).sort()).toEqual(['format', 'messageCount', 'sessionId']);
+  });
+
+  it('still gives the user the file when the audit report fails', async () => {
+    logExportMock.mockRejectedValueOnce(new Error('backend down'));
+    await sendOneMessage();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('download-conversation-button'));
+    });
+
+    // The blob is created before the report is attempted, so a backend that
+    // is down costs a log line, not the download.
+    expect(URL.createObjectURL).toHaveBeenCalled();
   });
 });

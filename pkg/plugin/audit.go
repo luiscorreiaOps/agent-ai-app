@@ -63,3 +63,43 @@ func (a *App) auditLogChat(user, role, mode, agent, prompt, response string, err
 	}
 	a.logger.Info("chat audit", fields...)
 }
+
+// maxAuditFieldChars bounds a client-supplied identifier before it reaches
+// a log line -- a session id is a short generated string, so anything
+// longer is either a bug or someone trying to write their own content into
+// the audit trail.
+const maxAuditFieldChars = 128
+
+func truncateAuditField(s string) string {
+	if len(s) <= maxAuditFieldChars {
+		return s
+	}
+	return s[:maxAuditFieldChars] + "...(truncated)"
+}
+
+// auditLogExport records one conversation leaving the platform as a file.
+//
+// Exchanging a conversation is already recorded by auditLogChat; downloading
+// a formatted copy of it -- tool calls included -- to someone's local disk
+// was not recorded anywhere, even though that is the moment the content
+// stops being governed by this plugin. Copy/paste always made that possible;
+// a one-click, nicely formatted export is what turns it from theoretically
+// possible into routine, which is exactly what an audit trail is for.
+//
+// Metadata only, and always-on, for the same reason auditLogChat's metadata
+// is: an admin reviewing activity later needs to know that it happened, not
+// what was in it. Nothing derived from what the user wrote reaches this
+// line -- the conversation's title was dropped from the payload for exactly
+// that reason, since it is the first 60 characters of their opening
+// message. Reading a conversation back is what auditLogChat and
+// AuditLogFullContent are already for; pairing this line with those is done
+// on the session id.
+func (a *App) auditLogExport(user, role, format, sessionID string, messageCount int) {
+	a.logger.Info("export audit",
+		"user", user,
+		"role", role,
+		"format", format,
+		"sessionId", truncateAuditField(sessionID),
+		"messageCount", messageCount,
+	)
+}

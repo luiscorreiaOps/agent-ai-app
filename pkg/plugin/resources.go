@@ -150,6 +150,7 @@ func (a *App) registerRoutes() {
 	mux.HandleFunc("GET /limits", a.handleLimits)
 	mux.HandleFunc("GET /integrations", a.handleIntegrations)
 	mux.HandleFunc("POST /chat", a.handleChat)
+	mux.HandleFunc("POST /export", a.handleExport)
 	// Same access level as every other resource route (Grafana's own
 	// plugins.app:access permission on this plugin id) -- no separate
 	// per-route role check exists anywhere in this backend today, so this
@@ -462,6 +463,61 @@ func (a *App) handleChat(w http.ResponseWriter, r *http.Request) {
 		Content: content,
 		Done:    true,
 	})
+}
+
+// exportAuditRequest is what the frontend reports after handing a
+// conversation file to the browser. Everything here is metadata: no message
+// text ever crosses this route, and nothing the caller sends changes what
+// the export contains -- the file is produced client-side from what is
+// already on screen. The route exists so the event lands in the same
+// structured log an admin already reads for chat activity.
+type exportAuditRequest struct {
+	SessionID    string `json:"sessionId"`
+	Format       string `json:"format"`
+	MessageCount int    `json:"messageCount"`
+}
+
+var validExportFormats = map[string]bool{
+	"md":   true,
+	"json": true,
+}
+
+// maxExportAuditBodyBytes bounds this route's body. It carries four small
+// fields, so anything larger is either a bug or an attempt to push content
+// into the audit log through a route that is meant to record metadata.
+const maxExportAuditBodyBytes = 4096
+
+// handleExport records that a conversation was downloaded. Viewer-accessible,
+// like the chat page itself: anyone who can see a conversation on screen can
+// already copy it out by hand, so refusing the report here would only mean
+// losing the record, not preventing the export.
+func (a *App) handleExport(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxExportAuditBodyBytes)
+
+	var req exportAuditRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "invalid request body: " + err.Error(),
+		})
+		return
+	}
+
+	if !validExportFormats[req.Format] {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "invalid format",
+		})
+		return
+	}
+
+	if req.MessageCount < 0 {
+		req.MessageCount = 0
+	}
+
+	a.auditLogExport(requestUser(r.Context()), requesterRole(r.Context()), req.Format, req.SessionID, req.MessageCount)
+
+	// Nothing to hand back: the file the user asked for was produced in
+	// their browser before this call was made.
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a *App) handleNotFound(w http.ResponseWriter, _ *http.Request) {

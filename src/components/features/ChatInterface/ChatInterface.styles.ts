@@ -1369,6 +1369,18 @@ font-size: 11px;
 color: ${theme.colors.text.secondary};
 margin-top: 2px;
 `,
+  historyItemDownload: css`
+cursor: pointer;
+color: ${theme.colors.text.secondary};
+flex-shrink: 0;
+opacity: 0.6;
+transition: opacity 0.15s, color 0.15s;
+
+&:hover {
+  opacity: 1;
+  color: ${theme.colors.text.primary};
+}
+`,
   historyItemDelete: css`
 cursor: pointer;
 color: ${theme.colors.text.secondary};
