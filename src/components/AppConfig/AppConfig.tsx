@@ -1,5 +1,5 @@
-import { AppPluginMeta, GrafanaTheme2, PluginConfigPageProps } from '@grafana/data';
-import { Alert, Field, Input, SecretInput, Button, FieldSet, Switch, TextArea, Tooltip, RadioButtonGroup, useStyles2 } from '@grafana/ui';
+import { AppPluginMeta, GrafanaTheme2, PluginConfigPageProps, SelectableValue } from '@grafana/data';
+import { Alert, Field, Input, SecretInput, Button, FieldSet, Select, Switch, TextArea, Tooltip, RadioButtonGroup, useStyles2 } from '@grafana/ui';
 import { ChangeEvent, useEffect, useState } from 'react';
 import { getBackendSrv } from '@grafana/runtime';
 import { css } from '@emotion/css';
@@ -91,10 +91,13 @@ const auditSwitchOnWrapper = css`
 interface ProviderExample {
   name: string;
   endpoint: string;
-  model: string;
+  /** Omitted for providers whose model catalog changes often (e.g. OpenCode) -- applying the example keeps the current model. */
+  model?: string;
   /** One-glance recommendation shown above the fuller note -- lets a new user pick without reading every line. */
   tagline: string;
   lightModeForDefaultAgent?: boolean;
+  /** Sets the Provider selector when applied -- 'opencode' examples require it. Defaults to 'openai'. */
+  provider?: LLMProviderKind;
   note: string;
 }
 
@@ -120,6 +123,13 @@ const PROVIDER_EXAMPLES: ProviderExample[] = [
     model: 'gemini-3.6-flash',
     tagline: 'High token limit and multi-tool support',
     note: 'Tool-calling and multi-step rounds work perfectly. Generous free tier limits.',
+  },
+  {
+    name: 'OpenCode Go',
+    endpoint: 'https://opencode.ai/zen/go/v1',
+    tagline: 'Cheap subscription gateway for open models',
+    note: 'Requires the "Provider" selector above to be set to OpenCode -- the plugin then sends the x-opencode-session routing header OpenCode requires. $10/month with generous per-model usage limits; browse the current model list at https://opencode.ai/docs/go and pick one in the Model field yourself (they change often).',
+    provider: 'opencode',
   },
 ];
 
@@ -149,6 +159,19 @@ const DEFAULT_ONLINE_SEARCH_BACKEND: OnlineSearchBackend = 'duckduckgo';
 const normalizeOnlineSearchBackend = (value?: string): OnlineSearchBackend =>
   value === 'gateway' || value === 'searxng' ? value : DEFAULT_ONLINE_SEARCH_BACKEND;
 
+// Provider kind for the primary endpoint. 'openai' (default) covers any
+// OpenAI-compatible Chat Completions API. 'opencode' marks the endpoint as
+// OpenCode (opencode.ai) -- the backend then sends OpenCode's required
+// x-opencode-session routing header (and identifies itself in the
+// User-Agent) on every LLM call. See pkg/plugin/opencode_session_transport.go
+// and https://opencode.ai/docs/go. Old/unknown values fall back to 'openai',
+// same policy as OnlineSearchBackend.
+type LLMProviderKind = 'openai' | 'opencode';
+
+const DEFAULT_LLM_PROVIDER: LLMProviderKind = 'openai';
+
+const normalizeLLMProvider = (value?: string): LLMProviderKind => (value === 'opencode' ? 'opencode' : DEFAULT_LLM_PROVIDER);
+
 // Same relaxed-scheme rule as the backend's normalizeExternalSearchURL: a
 // self-hosted SearXNG instance is commonly run on an internal network
 // without a public TLS cert. This is purely a client-side hint (a
@@ -165,6 +188,8 @@ const MAX_ONLINE_SEARCH_TIMEOUT_SECONDS = 15;
 
 interface JsonData {
   endpointURL?: string;
+  /** Provider kind: 'openai' (default) or 'opencode' -- see LLMProviderKind below and pkg/plugin/settings.go. */
+  provider?: LLMProviderKind;
   model?: string;
   lightModeForDefaultAgent?: boolean;
   timeoutSeconds?: number;
@@ -260,6 +285,7 @@ export function AppConfig({ plugin }: Props) {
 
   const [state, setState] = useState({
     endpointURL: jsonData.endpointURL || DEFAULT_ENDPOINT_URL,
+    provider: normalizeLLMProvider(jsonData.provider),
     model: jsonData.model || DEFAULT_MODEL,
     lightModeForDefaultAgent: jsonData.lightModeForDefaultAgent ?? false,
     timeoutSeconds: jsonData.timeoutSeconds || 60,
@@ -409,6 +435,10 @@ export function AppConfig({ plugin }: Props) {
     setState({ ...state, onlineSearchBackend: normalizeOnlineSearchBackend(value) });
   };
 
+  const onChangeProvider = (option: SelectableValue<string>) => {
+    setState({ ...state, provider: normalizeLLMProvider(option.value) });
+  };
+
   const onChangeFallback = (index: number, key: 'endpointURL' | 'model' | 'apiKey') => (event: ChangeEvent<HTMLInputElement>) => {
     const fallbackProviders = state.fallbackProviders.map((fp, i) => (i === index ? { ...fp, [key]: event.target.value } : fp));
     setState({ ...state, fallbackProviders });
@@ -459,6 +489,7 @@ export function AppConfig({ plugin }: Props) {
         version,
         {
           endpointURL: state.endpointURL,
+          provider: state.provider,
           model: state.model,
           lightModeForDefaultAgent: state.lightModeForDefaultAgent,
           timeoutSeconds: state.timeoutSeconds,
@@ -519,7 +550,7 @@ export function AppConfig({ plugin }: Props) {
   };
 
   const applyExample = (example: ProviderExample) => {
-    setState((prev) => ({ ...prev, endpointURL: example.endpoint, model: example.model, lightModeForDefaultAgent: example.lightModeForDefaultAgent ?? prev.lightModeForDefaultAgent }));
+    setState((prev) => ({ ...prev, endpointURL: example.endpoint, model: example.model ?? prev.model, provider: normalizeLLMProvider(example.provider), lightModeForDefaultAgent: example.lightModeForDefaultAgent ?? prev.lightModeForDefaultAgent }));
   };
 
   const onTestConnection = async () => {
@@ -574,13 +605,41 @@ export function AppConfig({ plugin }: Props) {
                     </Button>
                     <div style={{ fontSize: '12px' }}>
                       <div style={{ fontWeight: 600 }}>{ex.tagline}</div>
-                      <code>{ex.endpoint}</code> / <code>{ex.model}</code>
+                      <code>{ex.endpoint}</code>
+                      {ex.model && (
+                        <>
+                          {' / '}
+                          <code>{ex.model}</code>
+                        </>
+                      )}
                       <div style={{ opacity: 0.8, marginTop: '2px' }}>{ex.note}</div>
                     </div>
                   </div>
                 ))}
               </div>
             </Alert>
+
+            <Field
+              label="Provider"
+              description="What kind of LLM endpoint this is. 'OpenAI-compatible' covers every standard Chat Completions API. 'OpenCode' marks an OpenCode (opencode.ai) endpoint: the plugin then sends the x-opencode-session routing header OpenCode requires on every call."
+            >
+              <Select<string>
+                aria-label="Provider"
+                options={[
+                  { label: 'OpenAI-compatible', value: 'openai' },
+                  { label: 'OpenCode (opencode.ai)', value: 'opencode' },
+                ]}
+                value={state.provider}
+                onChange={onChangeProvider}
+              />
+            </Field>
+            {state.provider === 'opencode' && (
+              <Alert title="OpenCode endpoint" severity="info" style={{ marginBottom: '12px' }}>
+                Use the base URL (https://opencode.ai/zen/go/v1) -- the plugin appends /chat/completions itself. A stable
+                x-opencode-session header is sent automatically, no extra configuration needed. The model list changes
+                often: browse https://opencode.ai/docs/go and type the model id in the Model field below.
+              </Alert>
+            )}
 
             <Field
               label="Endpoint URL"

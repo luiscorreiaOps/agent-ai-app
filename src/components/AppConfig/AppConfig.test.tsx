@@ -17,6 +17,22 @@ jest.mock('@grafana/ui', () => ({
       ))}
     </div>
   ),
+  Select: ({ options, value, onChange, 'aria-label': ariaLabel }: any) => (
+    <select
+      aria-label={ariaLabel}
+      value={value}
+      onChange={(e) => {
+        const opt = options.find((o: any) => o.value === e.target.value);
+        onChange({ value: e.target.value, label: opt?.label });
+      }}
+    >
+      {options.map((opt: any) => (
+        <option key={opt.value} value={opt.value}>
+          {opt.label}
+        </option>
+      ))}
+    </select>
+  ),
   Tooltip: ({ children }: any) => <>{children}</>,
   useStyles2: (getStyles: any) =>
     getStyles({
@@ -118,6 +134,23 @@ describe('AppConfig', () => {
     await renderConfig();
     const input = screen.getByLabelText(/^endpoint url$/i) as HTMLInputElement;
     expect(input.value).toBe('https://example.com/v1');
+  });
+
+  it('renders the provider selector, defaulting to OpenAI-compatible', async () => {
+    await renderConfig();
+    const select = screen.getByLabelText(/^provider$/i) as HTMLSelectElement;
+    expect(select.value).toBe('openai');
+    // Both kinds are offered: standard OpenAI-compatible and OpenCode.
+    expect(select.options).toHaveLength(2);
+  });
+
+  it('shows the OpenCode hint only when the OpenCode provider is selected', async () => {
+    await renderConfig();
+    expect(screen.queryByText(/^opencode endpoint$/i)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/^provider$/i), { target: { value: 'opencode' } });
+    expect(screen.getByText(/^opencode endpoint$/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/^provider$/i), { target: { value: 'openai' } });
+    expect(screen.queryByText(/^opencode endpoint$/i)).not.toBeInTheDocument();
   });
 
   describe('Collapsible categories', () => {

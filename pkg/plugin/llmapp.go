@@ -145,5 +145,5 @@ func detectLLMApp(ctx context.Context, grafanaURL, token string) bool {
 // construction as every other provider, so it gets the exact same
 // Retry-After handling, timeouts, and retry behavior for free.
 func newLLMAppProvider(grafanaURL, token string, timeoutSeconds int) llmProvider {
-	return newLLMProvider(strings.TrimRight(grafanaURL, "/")+llmAppAPIPath, token, llmAppModel, timeoutSeconds)
+	return newLLMProvider(strings.TrimRight(grafanaURL, "/")+llmAppAPIPath, token, llmAppModel, "", timeoutSeconds)
 }

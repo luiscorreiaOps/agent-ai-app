@@ -48,7 +48,14 @@ const (
 
 // Settings holds the plugin configuration parsed from Grafana's jsonData and secureJsonData.
 type Settings struct {
-	EndpointURL              string            `json:"endpointURL"`
+	EndpointURL string `json:"endpointURL"`
+	// Provider selects endpoint behavior beyond the standard OpenAI wire
+	// format. 'openai' (default) covers any OpenAI-compatible Chat
+	// Completions API. 'opencode' marks the endpoint as OpenCode
+	// (opencode.ai): the LLM clients then send OpenCode's required
+	// x-opencode-session routing header and a self-identifying User-Agent.
+	// See pkg/plugin/opencode_session_transport.go.
+	Provider                 string            `json:"provider,omitempty"`
 	Model                    string            `json:"model"`
 	LightModeForDefaultAgent bool              `json:"lightModeForDefaultAgent,omitempty"`
 	TimeoutSeconds           int               `json:"timeoutSeconds"`
@@ -148,6 +155,13 @@ func LoadSettings(appSettings backend.AppInstanceSettings) (Settings, error) {
 	}
 	if settings.Model == "" {
 		settings.Model = defaultModel
+	}
+	// Unknown/legacy values fall back to 'openai' -- same policy as
+	// OnlineSearchBackend: bad provisioning must never enable unexpected
+	// behavior silently.
+	settings.Provider = strings.TrimSpace(settings.Provider)
+	if settings.Provider != "opencode" {
+		settings.Provider = "openai"
 	}
 	settings.GrafanaURL = strings.TrimSpace(settings.GrafanaURL)
 
