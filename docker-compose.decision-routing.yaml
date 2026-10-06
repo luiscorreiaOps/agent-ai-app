@@ -1,0 +1,20 @@
+services:
+  decision-fixture:
+    image: python:3.12-slim
+    command: ["python", "/fixture/decision-routing-fixture.py", "--host", "0.0.0.0"]
+    volumes:
+      - ./scripts/decision-routing-fixture.py:/fixture/decision-routing-fixture.py:ro,Z
+    # No published port. This synthetic fixture stays on the Compose network.
+  grafana-decision:
+    image: grafana/grafana:12.3.1
+    ports:
+      - "127.0.0.1:3002:3000"
+    volumes:
+      - ./dist:/var/lib/grafana/plugins/shortbobcat2735-agentai-app:ro,Z
+      - ./provisioning-decision-routing:/etc/grafana/provisioning:ro,Z
+    environment:
+      GF_DEFAULT_APP_MODE: development
+      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: shortbobcat2735-agentai-app
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    depends_on:
+      - decision-fixture

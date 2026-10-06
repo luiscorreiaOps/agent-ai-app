@@ -42,7 +42,8 @@ type App struct {
 	// the primary configuration first (providers[0], mirrored onto llmClient/
 	// llmStreamClient above for callers that only ever need the primary),
 	// then any complete fallback slots. See FallbackProviders' doc comment.
-	providers []llmProvider
+	providers        []llmProvider
+	decisionProvider DecisionProvider
 
 	// chatSemaphore caps how many chat requests (streaming or not) run at
 	// once across every user -- see MaxConcurrentChats and
@@ -305,6 +306,9 @@ func NewApp(ctx context.Context, appSettings backend.AppInstanceSettings) (insta
 		metricsRegistry: metricsRegistry,
 		toolExecutor:    te,
 		chatSemaphore:   make(chan struct{}, settings.MaxConcurrentChats),
+	}
+	if settings.DecisionRoutingMode != "off" {
+		app.decisionProvider = newHTTPDecisionProvider(settings)
 	}
 
 	// Resolve the full ordered provider list (primary + any complete fallback

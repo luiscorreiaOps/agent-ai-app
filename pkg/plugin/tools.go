@@ -7,15 +7,9 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 )
 
-// allTools returns every tool exposed to the LLM this turn: the static,
-// hand-integrated set below plus (when brain-agent is detected and enabled)
-// its memory tools -- store_memory, search_memory, delete_memory,
-// brain_diagnostics, search_memory_by_time, condense_memory. See mcp.go.
-//
-// When EnableToolSearch is active, only a small core set of tools plus the
-// search_tools meta-tool are returned upfront; the LLM calls search_tools to
-// discover and activate specialized tools on demand, reducing context usage.
-func (a *App) allTools(ctx context.Context, agent string) []openai.Tool {
+// toolCatalog returns tools permitted by the agent, admin allowlist and
+// integration availability, before applying presentation budgets.
+func (a *App) toolCatalog(ctx context.Context, agent string) []openai.Tool {
 	// Build the full pool first, irrespective of tool-search mode, so that
 	// search_tools has access to all tools when the LLM calls it later.
 	tools := llmTools(agent)
@@ -38,21 +32,23 @@ func (a *App) allTools(ctx context.Context, agent string) []openai.Tool {
 		a.toolExecutor.onlineSearch.AdvertisedAvailable() {
 		tools = append(tools, onlineSearchTool())
 	}
+	return filterEnabledTools(tools, a.settings.EnabledTools)
+}
+
+// eligibleTools also applies the Default agent's Light Mode restriction.
+// Workers use toolCatalog and their own small allowlist instead of inheriting
+// the parent chat's presentation filters.
+func (a *App) eligibleTools(ctx context.Context, agent string) []openai.Tool {
+	tools := a.toolCatalog(ctx, agent)
 	if agent == "generic" && a.settings.LightModeForDefaultAgent {
 		tools = filterEnabledTools(tools, []string{"list_dashboards", "get_dashboard", "list_folders", "list_alerts", "dispatch_worker"})
 	}
-	tools = filterEnabledTools(tools, a.settings.EnabledTools)
-
-	// Tool-search lazy-loading: expose only core tools + search_tools upfront.
-	// The full pool is stored in the ToolExecutor so search_tools can search it.
-	if a.settings.EnableToolSearch != nil && *a.settings.EnableToolSearch {
-		if a.toolExecutor != nil {
-			a.toolExecutor.setSearchPool(tools)
-		}
-		coreTools := filterEnabledTools(tools, toolSearchCoreTools)
-		return append([]openai.Tool{searchToolDef()}, coreTools...)
-	}
 	return tools
+}
+
+func (a *App) allTools(ctx context.Context, agent string) []openai.Tool {
+	lazy := a.settings.EnableToolSearch != nil && *a.settings.EnableToolSearch
+	return newRequestTools(a.eligibleTools(ctx, agent), lazy).tools()
 }
 
 // toolSearchCoreTools is the minimal set of tools always visible to the LLM

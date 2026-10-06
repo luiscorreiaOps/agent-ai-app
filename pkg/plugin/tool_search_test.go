@@ -345,45 +345,35 @@ func TestAllTools_ToolSearchDisabledReturnsAllTools(t *testing.T) {
 	}
 }
 
-// ─── ToolExecutor.setSearchPool / getSearchPool ───────────────────────────────
-
-func TestToolExecutor_SetAndGetSearchPool(t *testing.T) {
+// Search execution must use only this request's catalog.
+func TestToolExecutor_SearchToolsRequiresRequestCatalog(t *testing.T) {
 	t.Parallel()
-
 	te := NewToolExecutor("http://localhost:3000", nil)
-	pool := llmTools("generic")
-	te.setSearchPool(pool)
-
-	got := te.getSearchPool()
-	if len(got) != len(pool) {
-		t.Errorf("expected pool len %d, got %d", len(pool), len(got))
-	}
-}
-
-func TestToolExecutor_GetSearchPool_NilWhenNotSet(t *testing.T) {
-	t.Parallel()
-
-	te := NewToolExecutor("http://localhost:3000", nil)
-	got := te.getSearchPool()
-	if got != nil {
-		t.Error("expected nil pool when not set")
+	if _, err := te.Execute(t.Context(), toolSearchToolName, `{"query":"prometheus"}`); err == nil {
+		t.Fatal("search without a request catalog must not expose all tools")
 	}
 }
 
 func TestToolExecutor_Execute_SearchToolsCase(t *testing.T) {
 	t.Parallel()
-
 	te := NewToolExecutor("http://localhost:3000", nil)
-	// Pool not set -- falls back to full llmTools
-	result, err := te.Execute(t.Context(), toolSearchToolName, `{"query":"prometheus"}`)
+	session := newRequestTools(llmTools("generic"), true)
+	ctx := withRequestTools(t.Context(), session)
+	result, err := te.Execute(ctx, toolSearchToolName, `{"query":"prometheus"}`)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatal(err)
 	}
 	var res searchToolResult
 	if err := json.Unmarshal([]byte(result), &res); err != nil {
-		t.Fatalf("invalid JSON result: %v", err)
+		t.Fatal(err)
 	}
 	if res.Found == 0 {
-		t.Error("expected at least one prometheus-related tool")
+		t.Fatal("expected a prometheus-related tool")
 	}
+	for _, tool := range session.tools() {
+		if tool.Function != nil && tool.Function.Name == "query_prometheus" {
+			return
+		}
+	}
+	t.Fatal("discovered tool was not promoted into the next tools array")
 }

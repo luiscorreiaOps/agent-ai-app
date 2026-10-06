@@ -27,9 +27,9 @@ func searchToolDef() openai.Tool {
 		Function: &openai.FunctionDefinition{
 			Name: toolSearchToolName,
 			Description: "Discover and activate specialized tools for a specific task. " +
-				"Call this FIRST when you need to perform any specialized operation such as " +
+				"Call this when a needed specialized tool is not already supplied, such as " +
 				"querying Prometheus metrics, Loki logs, Tempo traces, Kubernetes workload data, " +
-				"alert investigation, or any other observability tool -- BEFORE trying to call them " +
+				"alert investigation, or any other observability tool. Use already supplied tools " +
 				"directly. Describe what you want to accomplish in plain English. " +
 				"The returned tool definitions are immediately available for you to use in this " +
 				"conversation by calling them with the parameters described in their schemas. " +

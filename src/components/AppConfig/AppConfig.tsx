@@ -163,7 +163,18 @@ const MAX_ONLINE_SEARCH_MAX_RESULTS = 8;
 const DEFAULT_ONLINE_SEARCH_TIMEOUT_SECONDS = 6;
 const MAX_ONLINE_SEARCH_TIMEOUT_SECONDS = 15;
 
+type DecisionRoutingMode = 'off' | 'shadow' | 'enforce';
+type DecisionProvider = 'systemone' | 'surogate';
+
 interface JsonData {
+  enableToolSearch?: boolean;
+  decisionRoutingMode?: DecisionRoutingMode;
+  decisionProvider?: DecisionProvider;
+  decisionEndpointURL?: string;
+  decisionModel?: string;
+  decisionTopK?: number;
+  decisionTimeoutMs?: number;
+  decisionMinConfidence?: number;
   endpointURL?: string;
   model?: string;
   lightModeForDefaultAgent?: boolean;
@@ -262,6 +273,17 @@ export function AppConfig({ plugin }: Props) {
     endpointURL: jsonData.endpointURL || DEFAULT_ENDPOINT_URL,
     model: jsonData.model || DEFAULT_MODEL,
     lightModeForDefaultAgent: jsonData.lightModeForDefaultAgent ?? false,
+    enableToolSearch: jsonData.enableToolSearch ?? false,
+    decisionRoutingMode: jsonData.decisionRoutingMode ?? 'off',
+    decisionProvider: jsonData.decisionProvider ?? 'systemone',
+    decisionEndpointURL: jsonData.decisionEndpointURL || '',
+    decisionModel: jsonData.decisionModel || '',
+    decisionTopK: jsonData.decisionTopK ?? 5,
+    decisionTimeoutMs: jsonData.decisionTimeoutMs ?? 1500,
+    decisionMinConfidence: jsonData.decisionMinConfidence ?? 0.35,
+    decisionApiKey: '',
+    decisionApiKeySet: Boolean(secureJsonFields.decisionApiKey),
+    decisionApiKeyReset: false,
     timeoutSeconds: jsonData.timeoutSeconds || 60,
     maxTokens: jsonData.maxTokens || 4096,
     rateLimitMaxRetries: jsonData.rateLimitMaxRetries ?? 3,
@@ -330,6 +352,7 @@ export function AppConfig({ plugin }: Props) {
   // click-to-expand.
   const [showProviderFallback, setShowProviderFallback] = useState(false);
   const [showModelSettings, setShowModelSettings] = useState(false);
+  const [showDecisionRouting, setShowDecisionRouting] = useState(false);
   const [showGrafanaIntegrations, setShowGrafanaIntegrations] = useState(false);
   const [showAssistantExperience, setShowAssistantExperience] = useState(false);
   const [showInternetTools, setShowInternetTools] = useState(false);
@@ -365,10 +388,13 @@ export function AppConfig({ plugin }: Props) {
     setState({ ...state, [key]: event.target.value });
   };
 
-  const onChangeNumber = (key: keyof typeof state, max?: number) => (event: ChangeEvent<HTMLInputElement>) => {
+  const onChangeNumber = (key: keyof typeof state, max?: number, min?: number) => (event: ChangeEvent<HTMLInputElement>) => {
     let value = parseInt(event.target.value, 10) || 0;
     if (max !== undefined && value > max) {
       value = max;
+    }
+    if (min !== undefined && value < min) {
+      value = min;
     }
     setState({ ...state, [key]: value });
   };
@@ -436,10 +462,17 @@ export function AppConfig({ plugin }: Props) {
         return;
       }
     }
+    if (state.decisionRoutingMode !== 'off' && (!state.decisionEndpointURL.trim() || !state.decisionModel.trim())) {
+      setSaveError('Decision endpoint URL and model are required when Decision Routing is enabled.');
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     try {
       const secureJsonData: Record<string, string> = {};
+      if (state.decisionApiKey || state.decisionApiKeyReset) {
+        secureJsonData.decisionApiKey = state.decisionApiKey;
+      }
       if (state.apiKey) {
         secureJsonData.apiKey = state.apiKey;
       }
@@ -461,6 +494,14 @@ export function AppConfig({ plugin }: Props) {
           endpointURL: state.endpointURL,
           model: state.model,
           lightModeForDefaultAgent: state.lightModeForDefaultAgent,
+          enableToolSearch: state.enableToolSearch,
+          decisionRoutingMode: state.decisionRoutingMode,
+          decisionProvider: state.decisionProvider,
+          decisionEndpointURL: state.decisionEndpointURL.trim(),
+          decisionModel: state.decisionModel.trim(),
+          decisionTopK: state.decisionTopK,
+          decisionTimeoutMs: state.decisionTimeoutMs,
+          decisionMinConfidence: state.decisionMinConfidence,
           timeoutSeconds: state.timeoutSeconds,
           maxTokens: state.maxTokens,
           rateLimitMaxRetries: state.rateLimitMaxRetries,
@@ -499,6 +540,9 @@ export function AppConfig({ plugin }: Props) {
 
       setState({
         ...state,
+        decisionApiKeySet: state.decisionApiKey ? true : state.decisionApiKeySet,
+        decisionApiKey: '',
+        decisionApiKeyReset: false,
         apiKeySet: true,
         apiKey: '',
         grafanaTokenSet: state.grafanaToken ? true : state.grafanaTokenSet,
@@ -622,6 +666,66 @@ export function AppConfig({ plugin }: Props) {
               />
             </Field>
             <div style={{ marginBottom: '-16px' }}><Field label="Light Mode" description="Light Mode (Default Agent) Reduces the context size to ~5k tokens for the Default agent by restricting its tools. Perfect for free tier limits."><div className={state.lightModeForDefaultAgent ? lightSwitchOnWrapper : undefined}><Switch value={state.lightModeForDefaultAgent} onChange={onChangeBool('lightModeForDefaultAgent')} /></div></Field></div>
+
+            <div className={styles.sectionSubHeaderDivided}>
+              <Button size="sm" variant="secondary" fill="text"
+                icon={showDecisionRouting ? 'angle-up' : 'angle-down'}
+                onClick={() => setShowDecisionRouting((v) => !v)}>
+                Tool Routing
+              </Button>
+            </div>
+            {showDecisionRouting && (
+              <>
+                <Field label="Tool Search" description="Start with discovery tools and activate specialized tools as needed.">
+                  <Switch aria-label="Tool Search" value={state.enableToolSearch} onChange={onChangeBool('enableToolSearch')} />
+                </Field>
+                <Field label="Decision Routing" description="Optional. Observe records suggestions; Reduce tools presents a shortlist to the AI. Errors or uncertainty keep your existing tool configuration.">
+                  <RadioButtonGroup value={state.decisionRoutingMode}
+                    options={[{ label: 'Off', value: 'off' }, { label: 'Observe', value: 'shadow' }, { label: 'Reduce tools', value: 'enforce' }]}
+                    onChange={(value: DecisionRoutingMode) => setState({ ...state, decisionRoutingMode: value })} />
+                </Field>
+                {state.decisionRoutingMode !== 'off' && (
+                  <>
+                    <div style={{ fontSize: '13px', marginBottom: '12px' }}>
+                      The decision provider receives bounded, redacted question text, recent conversation and dashboard context.
+                      A hosted endpoint sends this data to another provider. Use a local endpoint to keep routing local.
+                      With Light Mode, at most three specialized tools are presented with shorter descriptions; discovery replaces older selections.
+                    </div>
+                    <Field label="Decision provider">
+                      <RadioButtonGroup value={state.decisionProvider}
+                        options={[{ label: 'Jev / Decider', value: 'systemone' }, { label: 'Surogate Rune', value: 'surogate' }]}
+                        onChange={(value: DecisionProvider) => setState({ ...state, decisionProvider: value })} />
+                    </Field>
+                    <Field label="Decision endpoint URL" description="Full decision API URL, including its path. This is separate from the AI provider above.">
+                      <Input aria-label="Decision endpoint URL" value={state.decisionEndpointURL} autoComplete="off"
+                        onChange={onChangeString('decisionEndpointURL')} width={60}
+                        placeholder={state.decisionProvider === 'surogate' ? 'http://rune:8000/v1/decisions' : 'http://decider:8000/v1/systemone'} />
+                    </Field>
+                    <Field label="Decision model" description="Use the model ID accepted by your decision server.">
+                      <Input aria-label="Decision model" value={state.decisionModel} autoComplete="off"
+                        onChange={onChangeString('decisionModel')} width={40} placeholder="Mapika/decider-2b" />
+                    </Field>
+                    <Field label="Decision API key" description="Stored securely. Leave empty for a local server without authentication.">
+                      <SecretInput aria-label="Decision API key" value={state.decisionApiKey} isConfigured={state.decisionApiKeySet}
+                        onChange={onChangeString('decisionApiKey')}
+                        onReset={() => setState({ ...state, decisionApiKey: '', decisionApiKeySet: false, decisionApiKeyReset: true })} width={60} />
+                    </Field>
+                    <Field label="Candidate tools" description="Up to this many candidates, plus essential discovery tools. Light Mode caps candidates at three.">
+                      <Input aria-label="Candidate tools" type="number" min={1} max={10} value={state.decisionTopK}
+                        onChange={onChangeNumber('decisionTopK', 10, 1)} width={12} />
+                    </Field>
+                    <Field label="Decision timeout (ms)" description="Return to your existing tools when this deadline expires.">
+                      <Input aria-label="Decision timeout (ms)" type="number" min={100} max={10000} value={state.decisionTimeoutMs}
+                        onChange={onChangeNumber('decisionTimeoutMs', 10000, 100)} width={12} />
+                    </Field>
+                    <Field label="Minimum decision confidence" description="Below this value, keep your existing tools. Tune against your own questions.">
+                      <Input aria-label="Minimum decision confidence" type="number" min={0} max={1} step={0.05} value={state.decisionMinConfidence}
+                        onChange={(event) => setState({ ...state, decisionMinConfidence: Math.max(0, Math.min(1, Number(event.currentTarget.value) || 0)) })} width={12} />
+                    </Field>
+                  </>
+                )}
+              </>
+            )}
 
             <div className={styles.sectionSubHeaderDivided}>
               <Button

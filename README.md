@@ -45,6 +45,7 @@ datasources, or other Grafana resources.
 |---|---|
 | Context-aware chat | Ask about dashboards, panels, metrics, logs, traces, alerts, services, or architecture using live Grafana data. |
 | Light Mode | Optimize token usage on free-tier LLM providers by running the Default agent with a reduced context footprint. |
+| Optional Decision Routing | Use a separate local or hosted decision provider to shortlist tools. Off by default; supports observation, fallback and a smaller budget with Light Mode. See [Decision Routing](#decision-routing). |
 | Panel and dashboard analysis | Open Agent AI from a panel menu or dashboard context and ask about the exact queries, variables, datasource, and time range being viewed. |
 | Specialist agents / subagents | Create focused agents for areas such as SRE, Kubernetes, security, platform engineering, or internal docs. Each one adds its own context while keeping the same live Grafana tools. |
 | Alert and incident investigation | Start from a firing alert or incident seed and gather related alert rules, logs, traces, dashboards, and historical context in one flow. |
@@ -54,6 +55,27 @@ datasources, or other Grafana resources.
 | Optional memory | When Brain Agent is installed and enabled, Agent AI can search approved memories/runbooks and suggest new memories for admin review. |
 | Internet tools | Optional internet-backed search can be enabled for public documentation or product lookups; disable it for local-only operation. |
 | Usage metrics | `GET /api/plugins/shortbobcat2735-agentai-app/resources/metrics` exposes Prometheus-format request, latency, and token metrics. |
+
+## Decision Routing
+
+Under **Configuration > AI Provider > Tool Routing**, optionally configure a
+separate decision endpoint and model. **Off** makes no decision request;
+**Observe** records suggestions while keeping existing tools; **Reduce tools**
+presents ranked candidates before the normal LLM tool-calling loop. Jev/Decider
+use a full `/v1/systemone` URL and Surogate Rune uses `/v1/decisions`. Store the
+separate decision API key in the secure key field, when required.
+
+With Light Mode, routing keeps at most three specialized tools active, plus
+essential discovery, and shortens descriptions. Tool Search can replace those
+selections as the investigation progresses. Timeouts, invalid responses or low
+confidence recover the existing tool configuration. Grafana tools remain
+read-only, and admin tool/datasource restrictions still apply.
+
+The router receives bounded, redacted question text, recent conversation,
+dashboard context and tool descriptions. A hosted endpoint sends this context
+to another provider; use a local endpoint for local routing. Selection quality
+and total latency should be evaluated with your own workload before enabling
+Reduce tools broadly.
 
 ## Specialist Agents / Subagents
 

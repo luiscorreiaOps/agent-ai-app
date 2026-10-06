@@ -295,6 +295,13 @@ func (a *App) executeToolCalls(ctx context.Context, calls []openai.ToolCall, pro
 	}
 
 	runOne := func(tc openai.ToolCall) (openai.ChatCompletionMessage, error) {
+		if session := requestToolsFromContext(ctx); session != nil && !session.allows(tc.Function.Name) {
+			return openai.ChatCompletionMessage{
+				Role:       openai.ChatMessageRoleTool,
+				Content:    fmt.Sprintf("Error: tool %q is not available for this request.", tc.Function.Name),
+				ToolCallID: tc.ID,
+			}, nil
+		}
 		if tc.Function.Name == "dispatch_worker" {
 			result := redactSecrets(a.runDispatchedWorker(ctx, tc, provider, safeNotifyWorker))
 			return openai.ChatCompletionMessage{

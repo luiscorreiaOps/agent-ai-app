@@ -129,6 +129,9 @@ func (a *App) chatCompletion(ctx context.Context, req ChatRequest) (string, *Usa
 	systemPrompt += "\n\n" + internetToolsPromptAddition(a.internetToolState(ctx))
 	systemPrompt += a.prefetchMemoryContext(ctx, req.Context)
 
+	ctx, toolSession := a.prepareRequestTools(ctx, agent, req)
+	systemPrompt += toolSession.promptAddition()
+
 	messages := []openai.ChatCompletionMessage{
 		{Role: openai.ChatMessageRoleSystem, Content: systemPrompt},
 	}
@@ -177,10 +180,7 @@ func (a *App) chatCompletion(ctx context.Context, req ChatRequest) (string, *Usa
 		messages = compactIfNeeded(ctx, provider.client, provider.model, messages, maxContextTokens, nil)
 
 		buildReq := func(p llmProvider) openai.ChatCompletionRequest {
-			var tools []openai.Tool
-			if true {
-				tools = a.allTools(ctx, agent)
-			}
+			tools := toolSession.tools()
 			return openai.ChatCompletionRequest{
 				Model:               p.model,
 				Messages:            messages,

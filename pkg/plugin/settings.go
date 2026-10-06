@@ -91,13 +91,21 @@ type Settings struct {
 	// search_tools meta-tool. Specialized tools are discovered on demand by the
 	// LLM via search_tools, reducing initial context token consumption.
 	// Defaults to false (nil) to preserve the existing all-tools-upfront behavior.
-	EnableToolSearch           *bool  `json:"enableToolSearch,omitempty"`
-	OnlineSearchBackend        string `json:"onlineSearchBackend,omitempty"`
-	SearchGatewayURL           string `json:"searchGatewayURL,omitempty"`
-	SearxngURL                 string `json:"searxngURL,omitempty"`
-	OnlineSearchMaxResults     int    `json:"onlineSearchMaxResults,omitempty"`
-	OnlineSearchTimeoutSeconds int    `json:"onlineSearchTimeoutSeconds,omitempty"`
-	SearchGatewayToken         string `json:"-"`
+	EnableToolSearch           *bool    `json:"enableToolSearch,omitempty"`
+	DecisionRoutingMode        string   `json:"decisionRoutingMode,omitempty"`
+	DecisionProvider           string   `json:"decisionProvider,omitempty"`
+	DecisionEndpointURL        string   `json:"decisionEndpointURL,omitempty"`
+	DecisionModel              string   `json:"decisionModel,omitempty"`
+	DecisionTopK               int      `json:"decisionTopK,omitempty"`
+	DecisionTimeoutMs          int      `json:"decisionTimeoutMs,omitempty"`
+	DecisionMinConfidence      *float64 `json:"decisionMinConfidence,omitempty"`
+	DecisionAPIKey             string   `json:"-"`
+	OnlineSearchBackend        string   `json:"onlineSearchBackend,omitempty"`
+	SearchGatewayURL           string   `json:"searchGatewayURL,omitempty"`
+	SearxngURL                 string   `json:"searxngURL,omitempty"`
+	OnlineSearchMaxResults     int      `json:"onlineSearchMaxResults,omitempty"`
+	OnlineSearchTimeoutSeconds int      `json:"onlineSearchTimeoutSeconds,omitempty"`
+	SearchGatewayToken         string   `json:"-"`
 	// GrafanaTokenPath is intentionally json:"-" and extracted manually from
 	// raw jsonData, so it can be used without being serialized back out.
 	GrafanaTokenPath string `json:"-"`
@@ -291,6 +299,10 @@ func LoadSettings(appSettings backend.AppInstanceSettings) (Settings, error) {
 	}
 	if token, ok := appSettings.DecryptedSecureJSONData["searchGatewayToken"]; ok {
 		settings.SearchGatewayToken = strings.TrimSpace(token)
+	}
+	settings.DecisionAPIKey = strings.TrimSpace(appSettings.DecryptedSecureJSONData["decisionApiKey"])
+	if err := normalizeDecisionSettings(&settings); err != nil {
+		return settings, err
 	}
 
 	if len(settings.FallbackProviders) > maxFallbackProviders {

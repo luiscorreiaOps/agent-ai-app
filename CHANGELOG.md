@@ -2,6 +2,16 @@
 
 All notable changes to this plugin will be documented in this file, starting from its first public release.
 
+## Unreleased
+
+- Added optional Decision Routing for Jev/Decider and Surogate Rune decision APIs, with Off, Observe and Reduce tools modes, secure credentials, bounded timeouts and fallback.
+- Kept Light Mode compact with at most three specialized tools and shortened descriptions when routing succeeds.
+- Fixed Tool Search to activate discovered schemas in subsequent normal and streaming chat rounds using an isolated catalog per request.
+- Kept specialist worker tool subsets independent of the parent's Light Mode and Tool Search presentation.
+- Added routing metrics, regression tests and an isolated local Grafana validation profile using synthetic HTTP fixtures.
+- Updated OpenTelemetry to 1.45.0 to fix GO-2026-6505 found by the local review vulnerability checks.
+- Updated Jest and vulnerable npm dependencies for the review security gates. The root webpack configuration retains Grafana's scaffold helpers and bundle setup; ESLint runs as a separate mandatory CI check, removing the webpack lint plugin's unpatched dependency.
+
 ## 1.0.0
 
 Initial public release.

@@ -42,8 +42,14 @@ jest.mock('@grafana/runtime', () => ({
   }),
 }));
 
+jest.mock('../../api/client', () => ({
+  ...jest.requireActual('../../api/client'),
+  saveSettingsWithVersionCheck: jest.fn(),
+}));
+
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { AppConfig } from './AppConfig';
+import * as apiClient from '../../api/client';
 
 // AppConfig fetches integrations status in a fire-and-forget useEffect on
 // mount. None of the tests below assert on that fetch, but its mocked
@@ -84,6 +90,65 @@ const mockPlugin = {
 } as any;
 
 describe('AppConfig', () => {
+  it('defaults decision routing to off and keeps its endpoint hidden', async () => {
+    await renderConfig();
+    fireEvent.click(screen.getByText('Tool Routing'));
+    expect(screen.getByRole('button', { name: 'Off' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByLabelText('Decision endpoint URL')).not.toBeInTheDocument();
+  });
+
+  it('requires a decision endpoint and model before saving an enabled route', async () => {
+    const save = jest.mocked(apiClient.saveSettingsWithVersionCheck).mockClear().mockResolvedValue(1);
+    try {
+      await renderConfig();
+      fireEvent.click(screen.getByText('Tool Routing'));
+      fireEvent.click(screen.getByRole('button', { name: 'Observe' }));
+      fireEvent.click(screen.getByText(/save settings/i));
+      expect(screen.getByText(/Decision endpoint URL and model are required/)).toBeInTheDocument();
+      expect(save).not.toHaveBeenCalled();
+    } finally {
+      save.mockClear();
+    }
+  });
+
+  it('saves routing and Light Mode together with a separate secure credential', async () => {
+    const save = jest.mocked(apiClient.saveSettingsWithVersionCheck).mockClear().mockResolvedValue(1);
+    try {
+      const plugin = { ...mockPlugin, meta: { ...mockPlugin.meta, jsonData: {
+        ...mockPlugin.meta.jsonData, lightModeForDefaultAgent: true, enableToolSearch: true,
+      } } };
+      render(<AppConfig plugin={plugin} query={{} as any} />);
+      await act(async () => {});
+      fireEvent.click(screen.getByText('Tool Routing'));
+      fireEvent.click(screen.getByRole('button', { name: 'Reduce tools' }));
+      fireEvent.change(screen.getByLabelText('Decision endpoint URL'), { target: { value: 'http://decider:8000/v1/systemone' } });
+      fireEvent.change(screen.getByLabelText('Decision model'), { target: { value: 'Mapika/decider-2b' } });
+      fireEvent.change(screen.getByLabelText('Decision API key'), { target: { value: 'decision-test-key' } });
+      await act(async () => { fireEvent.click(screen.getByText(/save settings/i)); });
+      expect(save).toHaveBeenCalledWith(0, expect.objectContaining({
+        lightModeForDefaultAgent: true, enableToolSearch: true, decisionRoutingMode: 'enforce',
+        decisionEndpointURL: 'http://decider:8000/v1/systemone', decisionModel: 'Mapika/decider-2b',
+      }), { decisionApiKey: 'decision-test-key' });
+      const jsonData = save.mock.calls[0][1];
+      expect(JSON.stringify(jsonData)).not.toContain('decision-test-key');
+      expect(screen.getByLabelText('Decision API key')).toHaveValue('');
+    } finally {
+      save.mockClear();
+    }
+  });
+
+  it('preserves a configured decision credential when another setting is saved', async () => {
+    const save = jest.mocked(apiClient.saveSettingsWithVersionCheck).mockClear().mockResolvedValue(1);
+    try {
+      const plugin = { ...mockPlugin, meta: { ...mockPlugin.meta, secureJsonFields: { decisionApiKey: true } } };
+      render(<AppConfig plugin={plugin} query={{} as any} />);
+      await act(async () => {});
+      await act(async () => { fireEvent.click(screen.getByText(/save settings/i)); });
+      expect(save.mock.calls[0][2]).not.toHaveProperty('decisionApiKey');
+    } finally {
+      save.mockClear();
+    }
+  });
   it('renders the configuration form', async () => {
     await renderConfig();
     expect(screen.getByTestId('app-config')).toBeInTheDocument();

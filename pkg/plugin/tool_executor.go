@@ -14,7 +14,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
-	openai "github.com/sashabaranov/go-openai"
 )
 
 // ToolExecutor executes tool calls by querying Grafana datasources.
@@ -66,14 +65,6 @@ type ToolExecutor struct {
 	// admin Search Gateway), wired in app.go only when internetToolsEnabled
 	// is true. nil when internet tools are off or misconfigured.
 	onlineSearch *OnlineSearchClient
-
-	// searchPool is the full tool pool used by the search_tools meta-tool
-	// when EnableToolSearch is active. It is set by allTools() each turn
-	// (via setSearchPool) so search_tools always searches the same pool
-	// that was computed for this turn (respecting agent / allowlists /
-	// internet-tools state). Nil when tool-search mode is off.
-	searchPool   []openai.Tool
-	searchPoolMu sync.RWMutex
 }
 
 // NewToolExecutor creates a new tool executor.
@@ -86,40 +77,18 @@ func NewToolExecutor(grafanaURL string, logger log.Logger) *ToolExecutor {
 	}
 }
 
-// setSearchPool stores the full tool pool available for search_tools queries.
-// Called by allTools() each turn when EnableToolSearch is active, so the pool
-// always reflects the tools actually available for this agent/turn.
-func (te *ToolExecutor) setSearchPool(pool []openai.Tool) {
-	te.searchPoolMu.Lock()
-	defer te.searchPoolMu.Unlock()
-	te.searchPool = make([]openai.Tool, len(pool))
-	copy(te.searchPool, pool)
-}
-
-// getSearchPool returns a snapshot of the current search pool under the read lock.
-func (te *ToolExecutor) getSearchPool() []openai.Tool {
-	te.searchPoolMu.RLock()
-	defer te.searchPoolMu.RUnlock()
-	if te.searchPool == nil {
-		return nil
-	}
-	snap := make([]openai.Tool, len(te.searchPool))
-	copy(snap, te.searchPool)
-	return snap
-}
-
 // Execute runs a tool call and returns the result as a string.
 func (te *ToolExecutor) Execute(ctx context.Context, name string, arguments string) (string, error) {
+	if session := requestToolsFromContext(ctx); session != nil && !session.allows(name) {
+		return "", fmt.Errorf("tool %q is not available for this request", name)
+	}
 	switch name {
 	case toolSearchToolName:
-		// search_tools is handled here so it can access the live pool stored by
-		// setSearchPool(). Falls back to the full llmTools set if no pool is set
-		// (e.g. when called outside the lazy-loading path), so it is always safe.
-		pool := te.getSearchPool()
-		if pool == nil {
-			pool = llmTools("agent-1") // full set, includes dispatch_worker
+		session := requestToolsFromContext(ctx)
+		if session == nil {
+			return "", fmt.Errorf("search_tools requires a request tool catalog")
 		}
-		return searchTools(arguments, pool)
+		return session.search(arguments)
 	case "query_prometheus":
 		return te.queryPrometheus(ctx, arguments)
 	case "query_loki":

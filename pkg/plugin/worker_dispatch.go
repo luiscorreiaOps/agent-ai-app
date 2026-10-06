@@ -195,7 +195,10 @@ func (a *App) runDispatchedWorker(ctx context.Context, tc openai.ToolCall, provi
 	workerCtx, cancel := context.WithTimeout(ctx, workerTimeout)
 	defer cancel()
 
-	tools := filterEnabledTools(a.allTools(workerCtx, "generic"), workerToolNames(workerType))
+	tools := filterEnabledTools(a.toolCatalog(workerCtx, "generic"), workerToolNames(workerType))
+	// A worker has its own capability subset; do not inherit the parent
+	// conversation's lazy/routed tool state or overwrite another worker's.
+	workerCtx = withRequestTools(workerCtx, newRequestTools(tools, false))
 	messages := []openai.ChatCompletionMessage{
 		{Role: openai.ChatMessageRoleSystem, Content: workerSystemPrompt(workerType)},
 		{Role: openai.ChatMessageRoleUser, Content: task},
