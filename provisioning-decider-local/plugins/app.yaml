@@ -1,0 +1,23 @@
+apiVersion: 1
+apps:
+  - type: shortbobcat2735-agentai-app
+    org_id: 1
+    disabled: false
+    jsonData:
+      endpointURL: http://127.0.0.1:8000/v1
+      model: fixture
+      enableLLMAppIntegration: false
+      enableBrainAgentTools: false
+      enableInternetTools: false
+      lightModeForDefaultAgent: true
+      enableToolSearch: true
+      decisionRoutingMode: enforce
+      decisionProvider: systemone
+      decisionEndpointURL: http://127.0.0.1:8003/v1/systemone
+      decisionModel: Mapika/decider-2b
+      decisionTopK: 3
+      decisionTimeoutMs: 10000
+      decisionMinConfidence: 0.35
+      # Minimum integration smoke catalog. The separate opt-in Go test can
+      # validate the full catalog without this development-only allowlist.
+      enabledTools: [query_prometheus, query_loki, query_tempo, list_datasources, list_alerts]

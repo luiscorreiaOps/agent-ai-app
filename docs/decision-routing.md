@@ -86,10 +86,9 @@ performance benchmark. The Grafana login is the usual development `admin` /
 `admin`; bind it only to localhost. To execute Grafana queries, configure a
 Grafana service-account token as described in the main README.
 
-For a real minimum local test, replace the fixture URL/model with a separately
-served Decider 2B. The upstream HTTP server supports CPU and GPU; its GGUF
-library path is separate from that HTTP server. Rune has a much larger memory
-footprint. See the upstream [Decider guide](https://github.com/Mapika/decider),
+For a real minimum local test, use the Decider 2B setup below. The upstream HTTP
+server supports CPU and GPU; its GGUF library path is separate from that HTTP
+server. Rune has a much larger memory footprint. See the upstream [Decider guide](https://github.com/Mapika/decider),
 [Jev API](https://docs.typesafe.ai/introduction/quickstart) and
 [Rune API](https://github.com/invergent-ai/surogate/blob/main/docs/inference/decisions.md).
 
@@ -98,6 +97,90 @@ Stop the isolated profile after validation:
 ```sh
 docker compose -p agentai-decision-validation -f docker-compose.decision-routing.yaml down
 ```
+
+## Real Decider 2B validation
+
+The optional AVX2-capable Linux x86_64 development setup uses Decider 2B v11 Q4_K_M, a
+1.27 GB quantized checkpoint, with four CPU threads and no GPU. Prerequisites:
+`uv`, `curl`, `cmake`, a C++ compiler and `sha256sum`. Run from the repository:
+
+```sh
+bash scripts/setup-decider-local.sh
+bash scripts/run-decider-local.sh --threads 4
+```
+
+Setup pins `decider-ai` 1.8.1, `llama-cpp-python` 0.3.36, CPU Torch 2.14.1,
+Transformers 5.18.0 and NumPy 2.5.3. The model revision and SHA-256 checksums
+are pinned too. Weights, interpreter and packages live outside the checkout,
+under `/tmp/agentai-decider-2b-$(id -u)` by default. Set `AGENTAI_DECIDER_DIR`
+in both terminals to use another directory. Nothing is added to the plugin's
+bundle, dependencies or normal runtime. The review cleanup cannot delete this
+external model directory.
+
+The development bridge listens at `127.0.0.1:8003/v1/systemone`. It delegates
+to upstream `Decider.system_one`, using the checkpoint's tokenizer, prompt
+layout and fitted temperatures, and returns its actual Choice probabilities.
+It does not generate chat text or fabricate a ranking. It supports the one
+atomic Choice question used by Agent AI, serializes inference and runs offline
+after installation. This bridge is a development tool, not a production server.
+
+In another terminal, validate the **actual plugin-generated HTTP payload**:
+
+```sh
+# Minimum test: three candidate tools plus __none__.
+AGENTAI_DECISION_LIVE_URL=http://127.0.0.1:8003/v1/systemone \
+  go test -v -count=1 ./pkg/plugin -run '^TestDecisionLocalModel$'
+
+# Full catalog; extra time is allowed only in this response-validation test.
+AGENTAI_DECISION_LIVE_URL=http://127.0.0.1:8003/v1/systemone \
+  AGENTAI_DECISION_LIVE_FULL_CATALOG=1 AGENTAI_DECISION_LIVE_TIMEOUT=120s \
+  go test -v -count=1 ./pkg/plugin -run '^TestDecisionLocalModel$'
+```
+
+The samples cover Prometheus requests in English and Portuguese, Loki, Tempo
+and a request needing no tool. The minimum test checks expected choices and
+abstention; the full catalog validates the contract, since overlapping
+specialist tools can provide alternative valid next steps. Both validate through the
+plugin's existing HTTP adapter, including known criteria, finite confidence,
+complete normalized probabilities and the maximum-probability choice. Set
+`AGENTAI_DECISION_LIVE_ARTIFACTS` to an **absolute** directory to save these
+synthetic payloads and parsed answers; headers and credentials are never saved.
+Normal CI skips live inference and downloads no model. CPU latency is not an
+acceptance criterion for this contract validation; the test timeout override
+does not change the plugin's production limits.
+
+To validate the real decision model inside Grafana, keep the model server
+running and start the separate profile after building the plugin:
+
+```sh
+docker compose -p agentai-decider-real -f docker-compose.decider-local.yaml up -d
+python3 scripts/validate-decider-grafana.py
+docker compose -p agentai-decider-real -f docker-compose.decider-local.yaml down
+```
+
+This profile uses Linux host networking with Grafana at `127.0.0.1:3002` and
+the synthetic chat/Prometheus fixture at `127.0.0.1:8000`. Only routing uses
+the real Decider model. Light Mode and Tool Search are enabled, with a small
+explicit development allowlist and a 10-second decision deadline. The smoke
+check verifies normal and streaming requests, real Grafana datasource proxy
+queries, at most six LLM tool schemas and the 750-token Light response budget.
+It creates a temporary Viewer service account and removes it afterward. Stop
+the CPU model with Ctrl+C when finished.
+
+### Jev prompt compatibility
+
+The router uses the documented [Jev request schema](https://docs.typesafe.ai/api):
+`model`, structured `state` and a named `questions.tools` with `type: choice`,
+an atomic next-tool instruction and tool descriptions in `criteria`. It includes
+`__none__` and obeys the 255-option limit. The
+[Choice primitive](https://docs.typesafe.ai/primitives/choice) chooses one best
+next step: ranked probabilities are competing alternatives, rather than
+independent relevance scores. Agent AI uses the top alternatives as LLM
+candidates and leaves tool arguments and execution to its usual loop.
+
+Local Decider inference validates the real payload and readout. It does not
+constitute a live test of the hosted Jev service; that requires its model ID
+and credentials.
 
 ## Validation and measurements
 
@@ -137,9 +220,9 @@ Validated on 2026-10-05 on `feat/decision-routing`, based on `develop`:
 
 Runtime checks used the Compose fixture and a temporary Viewer service-account
 token to execute queries through the real Grafana datasource proxy. The token
-was deleted and the isolated containers stopped afterward. No model was loaded
-and no model weights were downloaded. The local runtime was Node 22.23.1 and
-Go 1.26.8; CI obtains its Go version from `go.mod`.
+was deleted and the isolated containers stopped afterward. That fixture-only
+phase loaded no model and downloaded no weights. The local runtime was Node
+22.23.1 and Go 1.26.8; CI obtains its Go version from `go.mod`.
 
 The review gate also found existing dependency vulnerabilities. OpenTelemetry,
 Jest and patched npm dependencies were updated. The root webpack configuration
@@ -147,3 +230,33 @@ uses Grafana's scaffold helpers and bundle setup while the mandatory separate
 ESLint check replaces the webpack lint plugin's unpatched dependency chain.
 Managed `.config` files and the plugin ID/type were kept intact. Grafana signing
 and final publication review remain separate from these local checks.
+
+### Real Decider follow-up
+
+Validated Decider 2B v11 Q4_K_M on the same branch on 2026-10-05, using
+upstream GGUF inference and the real plugin-generated request:
+
+| Check | Result |
+| --- | --- |
+| Minimum live catalog | All five expected choices passed: Prometheus in EN/PT, Loki, Tempo and `__none__` |
+| Full live catalog | All five response-contract checks passed with 32 tools plus `__none__`; included conversation history and dashboard context |
+| Grafana 12.3.1 + real Decider | Normal and streaming flows passed; queries used the real datasource proxy with a temporary Viewer token |
+| Light Mode | Four schemas (`list_alerts`, `list_datasources`, `query_prometheus`, `search_tools`); 750-token response budget preserved |
+| Bridge unit checks | All five dependency-free checks passed |
+| Follow-up `npm run validate:review` | Passed: Go race tests, security checks, 95 frontend tests, production build, six backend binaries and package validation |
+| Follow-up official Grafana validator | Zero errors; one expected unsigned-plugin warning |
+| Follow-up npm audits | Zero vulnerabilities, including development dependencies |
+
+Full-catalog answers included `analyze_log_patterns` ahead of `query_loki` for
+the log request and `analyze_metric_anomaly` for the Portuguese metrics request
+with dashboard context. These were valid contract responses; the full-catalog
+check is not an accuracy benchmark or an assertion that every preferred tool
+is ranked first. CPU duration was excluded from the acceptance criteria.
+Both sample payloads and parsed responses were captured outside the repository;
+no real user prompts or credentials were recorded. Containers and the temporary
+service account were removed after the Grafana check.
+
+The follow-up npm audit reported additional advisories. Overrides select the
+patched [KaTeX 0.18.2](https://github.com/advisories/GHSA-238p-pmpm-9mq7),
+[PostCSS selector parser 7.1.6](https://github.com/advisories/GHSA-rj75-hqrm-r3gf)
+and [source-map-js 1.2.2](https://github.com/advisories/GHSA-68fv-2mgg-jv7q).

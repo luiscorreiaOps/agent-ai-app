@@ -76,7 +76,7 @@ class FixtureHandler(BaseHTTPRequestHandler):
                 prompt = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
                 completed = any(m.get("role") == "tool" and "search_tools" not in str(m.get("content", "")) for m in messages)
                 choice = pick_tool(str(prompt), tools)
-                message = {"role": "assistant", "content": "Local fixture validation complete. No real model inference was performed."}
+                message = {"role": "assistant", "content": "Local fixture validation complete. No generative model inference was performed."}
                 finish = "stop"
                 if choice != "__none__" and not completed:
                     args = {} if choice == "list_alerts" else {"query": "up"}

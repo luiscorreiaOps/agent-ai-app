@@ -9,6 +9,8 @@ All notable changes to this plugin will be documented in this file, starting fro
 - Fixed Tool Search to activate discovered schemas in subsequent normal and streaming chat rounds using an isolated catalog per request.
 - Kept specialist worker tool subsets independent of the parent's Light Mode and Tool Search presentation.
 - Added routing metrics, regression tests and an isolated local Grafana validation profile using synthetic HTTP fixtures.
+- Added optional Decider 2B Q4_K_M CPU development setup, real-payload integration checks and a Grafana Light Mode smoke profile; model weights and ML packages remain outside the plugin.
+- Updated KaTeX, PostCSS selector parser and source-map-js overrides to resolve the npm audit advisories found during the Decider validation review.
 - Updated OpenTelemetry to 1.45.0 to fix GO-2026-6505 found by the local review vulnerability checks.
 - Updated Jest and vulnerable npm dependencies for the review security gates. The root webpack configuration retains Grafana's scaffold helpers and bundle setup; ESLint runs as a separate mandatory CI check, removing the webpack lint plugin's unpatched dependency.
 

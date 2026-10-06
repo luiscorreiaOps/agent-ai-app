@@ -86,7 +86,10 @@
     "serialize-javascript": "^7.1.2",
     "basic-ftp": "^6.2.2",
     "moment": "^2.31.0",
-    "ip-address": "^10.7.3"
+    "ip-address": "^10.7.3",
+    "katex": "0.18.2",
+    "postcss-selector-parser": "^7.1.6",
+    "source-map-js": "^1.2.2"
   },
   "trustedDependencies": [
     "@swc/core"

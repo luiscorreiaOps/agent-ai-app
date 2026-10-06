@@ -95,6 +95,8 @@ if [ -n "$gofmt_files" ]; then
   exit 1
 fi
 
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_decider_local_server.py
+bash -n scripts/setup-decider-local.sh scripts/run-decider-local.sh
 go vet ./pkg/...
 go mod verify
 go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 run
